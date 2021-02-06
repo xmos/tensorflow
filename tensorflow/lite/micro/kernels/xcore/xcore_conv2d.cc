@@ -29,6 +29,31 @@ struct Conv2DThreadParams {
   nn_window_op_job_params_t job;
 };
 
+struct Conv2DOpData {
+  Conv2DParams params;
+  ExecutionPlan execution_plan;
+  int stack_scratch_index;
+  size_t stack_size;
+  int weights_scratch_index;
+  int bias_scratch_index;
+};
+
+void *Init(TfLiteContext *context, const char *buffer, size_t length) {
+  auto *op_data = reinterpret_cast<Conv2DOpData *>(
+      context->AllocatePersistentBuffer(context, sizeof(Conv2DOpData)));
+  op_data->stack_scratch_index = -1;
+  op_data->stack_size = 0;
+  op_data->weights_scratch_index = -1;
+  op_data->bias_scratch_index = -1;
+
+  // parse custom options
+  TFLITE_DCHECK(buffer != nullptr);
+  parse_custom_options(context, buffer, length, op_data->params,
+                       &op_data->execution_plan);
+
+  return op_data;
+}
+
 //**************************************
 //**************************************
 //**************************************
@@ -37,15 +62,6 @@ struct Conv2DThreadParams {
 //**************************************
 //**************************************
 namespace shallow {
-
-struct Conv2DShallowOpData {
-  Conv2DParams params;
-  ExecutionPlan execution_plan;
-  int stack_scratch_index;
-  size_t stack_size;
-  int weights_scratch_index;
-  int bias_scratch_index;
-};
 
 struct Conv2DShallowThreadData {
   Conv2DThreadData data;
@@ -62,22 +78,6 @@ ATTRIBUTE_THREAD_FUNCTION void conv2d_shallow_thread_worker(void *context) {
 }
 }
 
-void *Init(TfLiteContext *context, const char *buffer, size_t length) {
-  auto *op = reinterpret_cast<Conv2DShallowOpData *>(
-      context->AllocatePersistentBuffer(context, sizeof(Conv2DShallowOpData)));
-  op->stack_scratch_index = -1;
-  op->stack_size = 0;
-  op->weights_scratch_index = -1;
-  op->bias_scratch_index = -1;
-
-  // parse custom options
-  TFLITE_DCHECK(buffer != nullptr);
-  parse_custom_options(context, buffer, length, op->params,
-                       &op->execution_plan);
-
-  return op;
-}
-
 TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 3);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
@@ -85,7 +85,7 @@ TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
   const TfLiteTensor *weights = GetInput(context, node, 1);
   const TfLiteTensor *bso = GetInput(context, node, 2);
 
-  auto *op = reinterpret_cast<Conv2DShallowOpData *>(node->user_data);
+  auto *op = reinterpret_cast<Conv2DOpData *>(node->user_data);
 
   // set param values not parsed from custom options
   op->params.K_h = weights->dims->data[1];
@@ -117,8 +117,7 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
   const TfLiteTensor *bso = GetInput(context, node, 2);
   TfLiteTensor *output = GetOutput(context, node, 0);
 
-  Conv2DShallowOpData *op =
-      reinterpret_cast<Conv2DShallowOpData *>(node->user_data);
+  Conv2DOpData *op = reinterpret_cast<Conv2DOpData *>(node->user_data);
   Dispatcher *dispatcher = GetDispatcher();
 
   // initialize the dispatcher
@@ -210,15 +209,6 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
 //**************************************
 namespace deep {
 
-struct Conv2DDeepOpData {
-  Conv2DParams params;
-  ExecutionPlan execution_plan;
-  int stack_scratch_index;
-  size_t stack_size;
-  int weights_scratch_index;
-  int bias_scratch_index;
-};
-
 struct Conv2DDeepThreadData {
   Conv2DThreadData data;
   Conv2DThreadParams params;
@@ -234,23 +224,6 @@ ATTRIBUTE_THREAD_FUNCTION void conv2d_deep_thread_worker(void *context) {
 }
 }
 
-void *Init(TfLiteContext *context, const char *buffer, size_t length) {
-  Conv2DDeepOpData *op = nullptr;
-  op = reinterpret_cast<Conv2DDeepOpData *>(
-      context->AllocatePersistentBuffer(context, sizeof(Conv2DDeepOpData)));
-  op->stack_scratch_index = -1;
-  op->stack_size = 0;
-  op->weights_scratch_index = -1;
-  op->bias_scratch_index = -1;
-
-  // parse custom options
-  TFLITE_DCHECK(buffer != nullptr);
-  parse_custom_options(context, buffer, length, op->params,
-                       &op->execution_plan);
-
-  return op;
-}
-
 TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 3);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
@@ -258,7 +231,7 @@ TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
   const TfLiteTensor *weights = GetInput(context, node, 1);
   const TfLiteTensor *bso = GetInput(context, node, 2);
 
-  Conv2DDeepOpData *op = reinterpret_cast<Conv2DDeepOpData *>(node->user_data);
+  Conv2DOpData *op = reinterpret_cast<Conv2DOpData *>(node->user_data);
 
   // set param values not parsed from custom options
   op->params.K_h = weights->dims->data[1];
@@ -291,7 +264,7 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
   const TfLiteTensor *bso = GetInput(context, node, 2);
   TfLiteTensor *output = GetOutput(context, node, 0);
 
-  Conv2DDeepOpData *op = reinterpret_cast<Conv2DDeepOpData *>(node->user_data);
+  Conv2DOpData *op = reinterpret_cast<Conv2DOpData *>(node->user_data);
   Dispatcher *dispatcher = GetDispatcher();
 
   // initialize the dispatcher
@@ -382,15 +355,6 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
 //**************************************
 namespace n1x1 {
 
-struct Conv2D1x1OpData {
-  Conv2DParams params;
-  ExecutionPlan execution_plan;
-  int stack_scratch_index;
-  size_t stack_size;
-  int weights_scratch_index;
-  int bias_scratch_index;
-};
-
 struct Conv2D1x1ThreadData {
   Conv2DThreadData data;
   const nn_image_params_t *x_image;
@@ -406,23 +370,6 @@ ATTRIBUTE_THREAD_FUNCTION void conv2d_1x1_thread_worker(void *context) {
 }
 }
 
-void *Init(TfLiteContext *context, const char *buffer, size_t length) {
-  Conv2D1x1OpData *op = nullptr;
-  op = reinterpret_cast<Conv2D1x1OpData *>(
-      context->AllocatePersistentBuffer(context, sizeof(Conv2D1x1OpData)));
-  op->stack_scratch_index = -1;
-  op->stack_size = 0;
-  op->weights_scratch_index = -1;
-  op->bias_scratch_index = -1;
-
-  // parse custom options
-  TFLITE_DCHECK(buffer != nullptr);
-  parse_custom_options(context, buffer, length, op->params,
-                       &op->execution_plan);
-
-  return op;
-}
-
 TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 3);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
@@ -430,7 +377,7 @@ TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
   const TfLiteTensor *weights = GetInput(context, node, 1);
   const TfLiteTensor *bso = GetInput(context, node, 2);
 
-  Conv2D1x1OpData *op = reinterpret_cast<Conv2D1x1OpData *>(node->user_data);
+  Conv2DOpData *op = reinterpret_cast<Conv2DOpData *>(node->user_data);
 
   // allocate the stack for thread workers
   GET_THREAD_FUNCTION_STACKSIZE(op->stack_size, conv2d_shallow_thread_worker);
@@ -459,7 +406,7 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
   const TfLiteTensor *bso = GetInput(context, node, 2);
   TfLiteTensor *output = GetOutput(context, node, 0);
 
-  Conv2D1x1OpData *op = reinterpret_cast<Conv2D1x1OpData *>(node->user_data);
+  Conv2DOpData *op = reinterpret_cast<Conv2DOpData *>(node->user_data);
   Dispatcher *dispatcher = GetDispatcher();
 
   // initialize the dispatcher
@@ -543,15 +490,6 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
 
 namespace depthwise {
 
-struct Conv2DDepthwiseOpData {
-  Conv2DParams params;
-  ExecutionPlan execution_plan;
-  int stack_scratch_index;
-  size_t stack_size;
-  int weights_scratch_index;
-  int bias_scratch_index;
-};
-
 struct Conv2DDepthwiseThreadData {
   Conv2DThreadData data;
   Conv2DThreadParams params;
@@ -590,24 +528,6 @@ static void fetch_depthwise_subtensor(int8_t *dest, const int8_t *weights,
   }
 }
 
-void *Init(TfLiteContext *context, const char *buffer, size_t length) {
-  Conv2DDepthwiseOpData *op = nullptr;
-  op = reinterpret_cast<Conv2DDepthwiseOpData *>(
-      context->AllocatePersistentBuffer(context,
-                                        sizeof(Conv2DDepthwiseOpData)));
-  op->stack_scratch_index = -1;
-  op->stack_size = 0;
-  op->weights_scratch_index = -1;
-  op->bias_scratch_index = -1;
-
-  // parse custom options
-  TFLITE_DCHECK(buffer != nullptr);
-  parse_custom_options(context, buffer, length, op->params,
-                       &op->execution_plan);
-
-  return op;
-}
-
 TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 3);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
@@ -615,8 +535,7 @@ TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
   const TfLiteTensor *weights = GetInput(context, node, 1);
   const TfLiteTensor *bso = GetInput(context, node, 2);
 
-  Conv2DDepthwiseOpData *op =
-      reinterpret_cast<Conv2DDepthwiseOpData *>(node->user_data);
+  Conv2DOpData *op = reinterpret_cast<Conv2DOpData *>(node->user_data);
 
   // set param values not parsed from custom options
   op->params.K_h = weights->dims->data[0];
@@ -649,8 +568,7 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
   const TfLiteTensor *bso = GetInput(context, node, 2);
   TfLiteTensor *output = GetOutput(context, node, 0);
 
-  Conv2DDepthwiseOpData *op =
-      reinterpret_cast<Conv2DDepthwiseOpData *>(node->user_data);
+  Conv2DOpData *op = reinterpret_cast<Conv2DOpData *>(node->user_data);
   Dispatcher *dispatcher = GetDispatcher();
 
   // initialize the dispatcher
@@ -749,26 +667,25 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
 }  // namespace conv
 
 TfLiteRegistration *Register_Conv2D_Deep() {
-  static TfLiteRegistration r = {conv::deep::Init, nullptr, conv::deep::Prepare,
+  static TfLiteRegistration r = {conv::Init, nullptr, conv::deep::Prepare,
                                  conv::deep::Eval};
   return &r;
 }
 
 TfLiteRegistration *Register_Conv2D_Shallow() {
-  static TfLiteRegistration r = {conv::shallow::Init, nullptr,
-                                 conv::shallow::Prepare, conv::shallow::Eval};
+  static TfLiteRegistration r = {conv::Init, nullptr, conv::shallow::Prepare,
+                                 conv::shallow::Eval};
   return &r;
 }
 
 TfLiteRegistration *Register_Conv2D_1x1() {
-  static TfLiteRegistration r = {conv::n1x1::Init, nullptr, conv::n1x1::Prepare,
+  static TfLiteRegistration r = {conv::Init, nullptr, conv::n1x1::Prepare,
                                  conv::n1x1::Eval};
   return &r;
 }
 
 TfLiteRegistration *Register_Conv2D_Depthwise() {
-  static TfLiteRegistration r = {conv::depthwise::Init, nullptr,
-                                 conv::depthwise::Prepare,
+  static TfLiteRegistration r = {conv::Init, nullptr, conv::depthwise::Prepare,
                                  conv::depthwise::Eval};
   return &r;
 }
