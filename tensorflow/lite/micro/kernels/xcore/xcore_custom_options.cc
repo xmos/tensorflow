@@ -6,15 +6,24 @@ namespace micro {
 namespace xcore {
 
 CustomOptionParser::CustomOptionParser(const char *buffer, size_t buffer_length)
-    : map_(flexbuffers::Map::EmptyMap()) {
-  map_ = flexbuffers::GetRoot(reinterpret_cast<const uint8_t *>(buffer),
-                              buffer_length)
-             .AsMap();
+    : keys_(flexbuffers::TypedVector::EmptyTypedVector()),
+      values_(flexbuffers::Vector::EmptyVector()) {
+  auto map = flexbuffers::GetRoot(reinterpret_cast<const uint8_t *>(buffer),
+                                  buffer_length)
+                 .AsMap();
+  keys_ = map.Keys();
+  values_ = map.Values();
 }
 
 flexbuffers::Reference CustomOptionParser::parseNamedCustomOption(
     const std::string &name) const {
-  return map_[name];
+  for (int i = 0; i < keys_.size(); ++i) {
+    const auto &key = keys_[i].AsString().str();
+    if (key.compare(name) == 0) {
+      return values_[i];
+    }
+  }
+  return flexbuffers::Reference(nullptr, 1, flexbuffers::NullPackedType());
 };
 
 //*****************************

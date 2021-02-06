@@ -30,7 +30,8 @@ void parse_custom_options(TfLiteContext *context, const char *buffer,
 
 class CustomOptionParser {
  private:
-  flexbuffers::Map map_;
+  flexbuffers::TypedVector keys_;
+  flexbuffers::Vector values_;
 
  public:
   CustomOptionParser(const char *buffer, size_t buffer_length);
