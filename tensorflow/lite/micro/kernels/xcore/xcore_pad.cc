@@ -32,8 +32,8 @@ void *Init(TfLiteContext *context, const char *buffer, size_t length) {
   TFLITE_DCHECK(buffer);
   TFLITE_DCHECK(length > 0);
 
-  op_data->pad_value =
-      get_named_uint32_custom_option(context, buffer, length, "pad_value");
+  auto parser = CustomOptionParser(buffer, length);
+  op_data->pad_value = parser.parseNamedCustomOption("pad_value").AsUInt32();
 
   return op_data;
 }
