@@ -100,10 +100,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteEvalTensor* input = tflite::micro::GetEvalInput(context, node, 0);
   TfLiteEvalTensor* output = tflite::micro::GetEvalOutput(context, node, 0);
 
-  const RuntimeShape input_shape = tflite::micro::GetTensorShape(input);
-
-  const int32_t length = input_shape.FlatSize();
-
   BSign8OpData* op = reinterpret_cast<BSign8OpData*>(node->user_data);
 
   Dispatcher* dispatcher = GetDispatcher();
