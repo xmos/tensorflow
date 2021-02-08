@@ -130,8 +130,7 @@ struct BConv2DOpData {
   // process.
   BConv2DJob *jobs;
 
-  // The number of concurrent instances of
-  // bconv2d_*_thread_generator
+  // The number of threads
   unsigned n_threads;
 
   // The total number of jobs (regions) processed by the threads, i.e. 6
