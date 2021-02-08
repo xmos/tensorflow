@@ -6,6 +6,7 @@
 #include "tensorflow/lite/micro/kernels/kernel_util.h"
 #include "tensorflow/lite/micro/kernels/xcore/xcore_custom_options.h"
 #include "tensorflow/lite/micro/kernels/xcore/xcore_dispatcher.h"
+#include "tensorflow/lite/util.h"
 
 extern "C" {
 #include "lib_nn/api/nn_operator.h"
@@ -355,9 +356,12 @@ static inline TfLiteStatus fetch_scratch_if_needed(
         static_cast<const T *>(context->GetScratchBuffer(context, scratch_idx));
     const RuntimeShape shape = tflite::micro::GetTensorShape(tensor);
 
+    size_t sizeof_tensor_type;
+    GetSizeOfType(context, tensor->type, &sizeof_tensor_type);
+
     GetDispatcher()->FetchBuffer((int8_t **)&array,
                                  tflite::micro::GetTensorData<int8_t>(tensor),
-                                 shape.FlatSize());
+                                 shape.FlatSize() * sizeof_tensor_type);
   } else {
     array = tflite::micro::GetTensorData<T>(tensor);
   }
@@ -387,6 +391,7 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
              kernel_type == BConv2DKernelType::INT8_DIDO) {
     op_data->args.Y_int8 = tflite::micro::GetTensorData<int8_t>(
         tflite::micro::GetEvalOutput(context, node, 0));
+
     TF_LITE_ENSURE_STATUS(
         fetch_scratch_if_needed(context, op_data->args.post_act_mult,
                                 tflite::micro::GetEvalInput(context, node, 2),
@@ -399,7 +404,6 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
         fetch_scratch_if_needed(context, op_data->args.output_trf_parameters,
                                 tflite::micro::GetEvalInput(context, node, 4),
                                 op_data->output_trf_scratch_idx));
-
     if (kernel_type == BConv2DKernelType::INT8) {
       TF_LITE_ENSURE_STATUS(
           fetch_scratch_if_needed(context, op_data->args.accu_modifier,
