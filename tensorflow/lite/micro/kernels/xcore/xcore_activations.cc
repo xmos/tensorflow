@@ -1,6 +1,7 @@
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/micro/kernels/kernel_util.h"
 
 extern "C" {
 #include "lib_nn/api/nn_operator.h"
@@ -20,12 +21,16 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  const TfLiteTensor* input = GetInput(context, node, 0);
-  const TfLiteTensor* lut = GetInput(context, node, 1);
-  TfLiteTensor* output = GetOutput(context, node, 0);
-  int32_t length = input->bytes / sizeof(uint8_t);
+  const TfLiteEvalTensor* input = tflite::micro::GetEvalInput(context, node, 0);
+  const TfLiteEvalTensor* lut = tflite::micro::GetEvalInput(context, node, 1);
+  TfLiteEvalTensor* output = tflite::micro::GetEvalOutput(context, node, 0);
 
-  lookup8(output->data.uint8, input->data.uint8, lut->data.uint8, 0, length);
+  const RuntimeShape input_shape = tflite::micro::GetTensorShape(input);
+
+  lookup8(tflite::micro::GetTensorData<uint8_t>(output),
+          tflite::micro::GetTensorData<uint8_t>(input),
+          tflite::micro::GetTensorData<uint8_t>(lut), 0,
+          input_shape.FlatSize());
 
   return kTfLiteOk;
 }

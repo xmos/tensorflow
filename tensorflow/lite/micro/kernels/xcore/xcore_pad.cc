@@ -2,6 +2,7 @@
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/micro/kernels/kernel_util.h"
 #include "tensorflow/lite/micro/kernels/xcore/xcore_custom_options.h"
 #include "tensorflow/lite/micro/memory_helpers.h"
 
@@ -69,13 +70,16 @@ TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
 }
 
 TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
-  const TfLiteTensor *input = GetInput(context, node, 0);
-  const TfLiteTensor *output = GetOutput(context, node, 0);
+  const TfLiteEvalTensor *input = tflite::micro::GetEvalInput(context, node, 0);
+  TfLiteEvalTensor *output = tflite::micro::GetEvalOutput(context, node, 0);
 
   auto *op_data = reinterpret_cast<PadOpData *>(node->user_data);
 
-  pad_run(output->data.data, input->data.data, &op_data->plan,
-          op_data->pad_value);
+  // Note, have to cast-away const-ness of input tensor because pad_run in not
+  // const-aware
+  pad_run(tflite::micro::GetTensorData<void>(output),
+          const_cast<void *>(tflite::micro::GetTensorData<void>(input)),
+          &op_data->plan, op_data->pad_value);
 
   return kTfLiteOk;
 }

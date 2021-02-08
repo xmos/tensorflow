@@ -9,7 +9,7 @@
 #include "tensorflow/lite/micro/micro_error_reporter.h"
 
 extern "C" {
-void memload(void *dest, void *src, size_t size)
+void memload(void *dest, void *src, size_t size);
 }
 
 #ifdef XCORE

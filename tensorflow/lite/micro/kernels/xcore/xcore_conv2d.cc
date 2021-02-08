@@ -1,6 +1,7 @@
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/micro/kernels/kernel_util.h"
 #include "tensorflow/lite/micro/kernels/xcore/xcore_custom_options.h"
 #include "tensorflow/lite/micro/kernels/xcore/xcore_dispatcher.h"
 
@@ -112,10 +113,15 @@ TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
 }
 
 TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
-  const TfLiteTensor *input = GetInput(context, node, 0);
-  const TfLiteTensor *weights = GetInput(context, node, 1);
-  const TfLiteTensor *bso = GetInput(context, node, 2);
-  TfLiteTensor *output = GetOutput(context, node, 0);
+  const TfLiteEvalTensor *input = tflite::micro::GetEvalInput(context, node, 0);
+  const TfLiteEvalTensor *weights =
+      tflite::micro::GetEvalInput(context, node, 1);
+  const TfLiteEvalTensor *bso = tflite::micro::GetEvalInput(context, node, 2);
+  TfLiteEvalTensor *output = tflite::micro::GetEvalOutput(context, node, 0);
+
+  const RuntimeShape input_shape = tflite::micro::GetTensorShape(input);
+  const RuntimeShape weights_shape = tflite::micro::GetTensorShape(weights);
+  const RuntimeShape output_shape = tflite::micro::GetTensorShape(output);
 
   Conv2DShallowOpData *op =
       reinterpret_cast<Conv2DShallowOpData *>(node->user_data);
@@ -133,12 +139,12 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
   Conv2DShallowThreadData thread_data[n_th];
 
   // setup params common to all thread workers
-  nn_image_params_t in_image = {(uint32_t)input->dims->data[1],
-                                (uint32_t)input->dims->data[2],
-                                (uint32_t)input->dims->data[3]};
-  nn_image_params_t out_image = {(uint32_t)output->dims->data[1],
-                                 (uint32_t)output->dims->data[2],
-                                 (uint32_t)weights->dims->data[0]};
+  nn_image_params_t in_image = {(uint32_t)input_shape.Dims(1),
+                                (uint32_t)input_shape.Dims(2),
+                                (uint32_t)input_shape.Dims(3)};
+  nn_image_params_t out_image = {(uint32_t)output_shape.Dims(1),
+                                 (uint32_t)output_shape.Dims(2),
+                                 (uint32_t)weights_shape.Dims(0)};
   nn_window_params_t conv_window = {
       {(uint32_t)op->params.K_h, (uint32_t)op->params.K_w},
       {-op->params.pad.top, -op->params.pad.left},
@@ -166,22 +172,26 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
     const ChannelGroup &changrp = op->execution_plan.changrps[i_cg];
 
     // fetch the weights and biases
-    weights_fetch_size = input->dims->data[3] * weights->dims->data[1] *
-                         weights->dims->data[2] * changrp.size;
-    dispatcher->FetchBuffer(&tK, &weights->data.int8[weights_src_offset],
-                            weights_fetch_size);
+    weights_fetch_size = input_shape.Dims(3) * weights_shape.Dims(1) *
+                         weights_shape.Dims(2) * changrp.size;
+    dispatcher->FetchBuffer(
+        &tK, &tflite::micro::GetTensorData<int8_t>(weights)[weights_src_offset],
+        weights_fetch_size);
     weights_src_offset += weights_fetch_size;
-    dispatcher->FetchBuffer((int8_t **)&tBSO,
-                            &bso->data.int8[biases_src_offset],
-                            bso_changrp_bytes);
+    dispatcher->FetchBuffer(
+        (int8_t **)&tBSO,
+        &tflite::micro::GetTensorData<int8_t>(bso)[biases_src_offset],
+        bso_changrp_bytes);
     biases_src_offset += bso_changrp_bytes;
 
     // create tasks
     for (int i_rg = 0; i_rg < op->execution_plan.regions.GetSize(); i_rg++) {
       const RowColRegion &region = op->execution_plan.regions[i_rg];
 
-      thread_data[i_rg].data.Y = (nn_image_t *)output->data.int8;
-      thread_data[i_rg].data.X = (const nn_image_t *)input->data.int8;
+      thread_data[i_rg].data.Y =
+          tflite::micro::GetTensorData<nn_image_t>(output);
+      thread_data[i_rg].data.X =
+          tflite::micro::GetTensorData<nn_image_t>(input);
       thread_data[i_rg].data.K = (const nn_tensor_t *)tK;
       thread_data[i_rg].data.BSO = (const nn_bso_block_t *)tBSO;
       thread_data[i_rg].params.zero_point = op->params.pad.zero_point;
@@ -286,10 +296,15 @@ TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
 }
 
 TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
-  const TfLiteTensor *input = GetInput(context, node, 0);
-  const TfLiteTensor *weights = GetInput(context, node, 1);
-  const TfLiteTensor *bso = GetInput(context, node, 2);
-  TfLiteTensor *output = GetOutput(context, node, 0);
+  const TfLiteEvalTensor *input = tflite::micro::GetEvalInput(context, node, 0);
+  const TfLiteEvalTensor *weights =
+      tflite::micro::GetEvalInput(context, node, 1);
+  const TfLiteEvalTensor *bso = tflite::micro::GetEvalInput(context, node, 2);
+  TfLiteEvalTensor *output = tflite::micro::GetEvalOutput(context, node, 0);
+
+  const RuntimeShape input_shape = tflite::micro::GetTensorShape(input);
+  const RuntimeShape weights_shape = tflite::micro::GetTensorShape(weights);
+  const RuntimeShape output_shape = tflite::micro::GetTensorShape(output);
 
   Conv2DDeepOpData *op = reinterpret_cast<Conv2DDeepOpData *>(node->user_data);
   Dispatcher *dispatcher = GetDispatcher();
@@ -305,12 +320,12 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
   Conv2DDeepThreadData thread_data[n_th];
 
   // setup params common to all thread workers
-  nn_image_params_t in_image = {(uint32_t)input->dims->data[1],
-                                (uint32_t)input->dims->data[2],
-                                (uint32_t)input->dims->data[3]};
-  nn_image_params_t out_image = {(uint32_t)output->dims->data[1],
-                                 (uint32_t)output->dims->data[2],
-                                 (uint32_t)weights->dims->data[0]};
+  nn_image_params_t in_image = {(uint32_t)input_shape.Dims(1),
+                                (uint32_t)input_shape.Dims(2),
+                                (uint32_t)input_shape.Dims(3)};
+  nn_image_params_t out_image = {(uint32_t)output_shape.Dims(1),
+                                 (uint32_t)output_shape.Dims(2),
+                                 (uint32_t)weights_shape.Dims(0)};
   nn_window_params_t conv_window = {
       {(uint32_t)op->params.K_h, (uint32_t)op->params.K_w},
       {-op->params.pad.top, -op->params.pad.left},
@@ -340,20 +355,24 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
 
     // fetch the weights and biases
     weights_fetch_size =
-        input->dims->data[3] * op->params.K_h * op->params.K_w * changrp.size;
-    dispatcher->FetchBuffer(&tK, &weights->data.int8[weights_src_offset],
-                            weights_fetch_size);
+        input_shape.Dims(3) * op->params.K_h * op->params.K_w * changrp.size;
+    dispatcher->FetchBuffer(
+        &tK, &tflite::micro::GetTensorData<int8_t>(weights)[weights_src_offset],
+        weights_fetch_size);
     weights_src_offset += weights_fetch_size;
-    dispatcher->FetchBuffer((int8_t **)&tBSO,
-                            &bso->data.int8[biases_src_offset],
-                            bso_changrp_bytes);
+    dispatcher->FetchBuffer(
+        (int8_t **)&tBSO,
+        &tflite::micro::GetTensorData<int8_t>(bso)[biases_src_offset],
+        bso_changrp_bytes);
     biases_src_offset += bso_changrp_bytes;
 
     for (int i_rg = 0; i_rg < op->execution_plan.regions.GetSize(); i_rg++) {
       const RowColRegion &region = op->execution_plan.regions[i_rg];
 
-      thread_data[i_rg].data.Y = (nn_image_t *)output->data.int8;
-      thread_data[i_rg].data.X = (const nn_image_t *)input->data.int8;
+      thread_data[i_rg].data.Y =
+          tflite::micro::GetTensorData<nn_image_t>(output);
+      thread_data[i_rg].data.X =
+          tflite::micro::GetTensorData<nn_image_t>(input);
       thread_data[i_rg].data.K = (const nn_tensor_t *)tK;
       thread_data[i_rg].data.BSO = (const nn_bso_block_t *)tBSO;
       thread_data[i_rg].params.zero_point = op->params.pad.zero_point;
@@ -454,10 +473,14 @@ TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
 }
 
 TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
-  const TfLiteTensor *input = GetInput(context, node, 0);
-  const TfLiteTensor *weights = GetInput(context, node, 1);
-  const TfLiteTensor *bso = GetInput(context, node, 2);
-  TfLiteTensor *output = GetOutput(context, node, 0);
+  const TfLiteEvalTensor *input = tflite::micro::GetEvalInput(context, node, 0);
+  const TfLiteEvalTensor *weights =
+      tflite::micro::GetEvalInput(context, node, 1);
+  const TfLiteEvalTensor *bso = tflite::micro::GetEvalInput(context, node, 2);
+  TfLiteEvalTensor *output = tflite::micro::GetEvalOutput(context, node, 0);
+
+  const RuntimeShape input_shape = tflite::micro::GetTensorShape(input);
+  const RuntimeShape output_shape = tflite::micro::GetTensorShape(output);
 
   Conv2D1x1OpData *op = reinterpret_cast<Conv2D1x1OpData *>(node->user_data);
   Dispatcher *dispatcher = GetDispatcher();
@@ -472,12 +495,12 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
   Conv2D1x1ThreadData thread_data[op->execution_plan.GetNumThreads()];
 
   // setup params common to all thread workers
-  nn_image_params_t in_image = {(uint32_t)input->dims->data[1],
-                                (uint32_t)input->dims->data[2],
-                                (uint32_t)input->dims->data[3]};
-  nn_image_params_t out_image = {(uint32_t)output->dims->data[1],
-                                 (uint32_t)output->dims->data[2],
-                                 (uint32_t)output->dims->data[3]};
+  nn_image_params_t in_image = {(uint32_t)input_shape.Dims(1),
+                                (uint32_t)input_shape.Dims(2),
+                                (uint32_t)input_shape.Dims(3)};
+  nn_image_params_t out_image = {(uint32_t)output_shape.Dims(1),
+                                 (uint32_t)output_shape.Dims(2),
+                                 (uint32_t)output_shape.Dims(3)};
 
   // load weights & bias scratch buffers (if necessary)
   int8_t *tK = nullptr;
@@ -501,20 +524,24 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
     const ChannelGroup &changrp = op->execution_plan.changrps[i_cg];
 
     // fetch the weights and biases
-    weights_fetch_size = input->dims->data[3] * changrp.size;
-    dispatcher->FetchBuffer(&tK, &weights->data.int8[weights_src_offset],
-                            weights_fetch_size);
+    weights_fetch_size = input_shape.Dims(3) * changrp.size;
+    dispatcher->FetchBuffer(
+        &tK, &tflite::micro::GetTensorData<int8_t>(weights)[weights_src_offset],
+        weights_fetch_size);
     weights_src_offset += weights_fetch_size;
-    dispatcher->FetchBuffer((int8_t **)&tBSO,
-                            &bso->data.int8[biases_src_offset],
-                            bso_changrp_bytes);
+    dispatcher->FetchBuffer(
+        (int8_t **)&tBSO,
+        &tflite::micro::GetTensorData<int8_t>(bso)[biases_src_offset],
+        bso_changrp_bytes);
     biases_src_offset += bso_changrp_bytes;
 
     for (int i_rg = 0; i_rg < op->execution_plan.regions.GetSize(); i_rg++) {
       const RowColRegion &region = op->execution_plan.regions[i_rg];
 
-      thread_data[i_rg].data.Y = (nn_image_t *)output->data.int8;
-      thread_data[i_rg].data.X = (const nn_image_t *)input->data.int8;
+      thread_data[i_rg].data.Y =
+          tflite::micro::GetTensorData<nn_image_t>(output);
+      thread_data[i_rg].data.X =
+          tflite::micro::GetTensorData<nn_image_t>(input);
       thread_data[i_rg].data.K = (const nn_tensor_t *)tK;
       thread_data[i_rg].data.BSO = (const nn_bso_block_t *)tBSO;
       thread_data[i_rg].x_image = &in_image;
@@ -644,10 +671,14 @@ TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
 }
 
 TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
-  const TfLiteTensor *input = GetInput(context, node, 0);
-  const TfLiteTensor *weights = GetInput(context, node, 1);
-  const TfLiteTensor *bso = GetInput(context, node, 2);
-  TfLiteTensor *output = GetOutput(context, node, 0);
+  const TfLiteEvalTensor *input = tflite::micro::GetEvalInput(context, node, 0);
+  const TfLiteEvalTensor *weights =
+      tflite::micro::GetEvalInput(context, node, 1);
+  const TfLiteEvalTensor *bso = tflite::micro::GetEvalInput(context, node, 2);
+  TfLiteEvalTensor *output = tflite::micro::GetEvalOutput(context, node, 0);
+
+  const RuntimeShape input_shape = tflite::micro::GetTensorShape(input);
+  const RuntimeShape output_shape = tflite::micro::GetTensorShape(output);
 
   Conv2DDepthwiseOpData *op =
       reinterpret_cast<Conv2DDepthwiseOpData *>(node->user_data);
@@ -665,13 +696,12 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
   Conv2DDepthwiseThreadData thread_data[n_th];
 
   // setup params common to all thread workers
-  int32_t C_out = output->dims->data[3];
-  nn_image_params_t in_image = {(uint32_t)input->dims->data[1],
-                                (uint32_t)input->dims->data[2],
-                                (uint32_t)input->dims->data[3]};
-  nn_image_params_t out_image = {(uint32_t)output->dims->data[1],
-                                 (uint32_t)output->dims->data[2],
-                                 (uint32_t)C_out};
+  nn_image_params_t in_image = {(uint32_t)input_shape.Dims(1),
+                                (uint32_t)input_shape.Dims(2),
+                                (uint32_t)input_shape.Dims(3)};
+  nn_image_params_t out_image = {(uint32_t)output_shape.Dims(1),
+                                 (uint32_t)output_shape.Dims(2),
+                                 (uint32_t)output_shape.Dims(3)};
   nn_window_params_t conv_window = {
       {(uint32_t)op->params.K_h, (uint32_t)op->params.K_w},
       {-op->params.pad.top, -op->params.pad.left},
@@ -699,34 +729,34 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
 
     if (op->weights_scratch_index >= 0) {
       // fetch the weights
-      fetch_depthwise_subtensor(tK, weights->data.int8, op->params.K_h,
-                                op->params.K_w, C_out, changrp.start,
-                                changrp.size);
+      fetch_depthwise_subtensor(
+          tK, tflite::micro::GetTensorData<int8_t>(weights), op->params.K_h,
+          op->params.K_w, output_shape.Dims(3), changrp.start, changrp.size);
       flags = CONV2D_DEPTHWISE_FLAG_SLICED_K;
     } else {
       // use entire tensor
-      tK = weights->data.int8;
+      tK = const_cast<int8_t *>(tflite::micro::GetTensorData<int8_t>(weights));
     }
 
     if (op->weights_scratch_index >= 0) {
       // fetch the biases
-      dispatcher->FetchBuffer((int8_t **)&tBSO,
-                              &bso->data.int8[biases_src_offset],
-                              bso_changrp_bytes);
+      dispatcher->FetchBuffer(
+          (int8_t **)&tBSO,
+          &tflite::micro::GetTensorData<int8_t>(bso)[biases_src_offset],
+          bso_changrp_bytes);
       biases_src_offset += bso_changrp_bytes;
-      // dispatcher->FetchBiases(&tBSO, bso->data.i16,
-      //                         op->execution_plan.GetBiasScratchSize(),
-      //                         changrp);
     } else {
       // use entire tensor
-      tBSO = bso->data.i16;
+      tBSO = const_cast<int16_t *>(tflite::micro::GetTensorData<int16_t>(bso));
     }
 
     for (int i_rg = 0; i_rg < op->execution_plan.regions.GetSize(); i_rg++) {
       const RowColRegion &region = op->execution_plan.regions[i_rg];
 
-      thread_data[i_rg].data.Y = (nn_image_t *)output->data.int8;
-      thread_data[i_rg].data.X = (const nn_image_t *)input->data.int8;
+      thread_data[i_rg].data.Y =
+          tflite::micro::GetTensorData<nn_image_t>(output);
+      thread_data[i_rg].data.X =
+          tflite::micro::GetTensorData<nn_image_t>(input);
       thread_data[i_rg].data.K = (const nn_tensor_t *)tK;
       thread_data[i_rg].data.BSO = (const nn_bso_block_t *)tBSO;
       thread_data[i_rg].params.zero_point = op->params.pad.zero_point;

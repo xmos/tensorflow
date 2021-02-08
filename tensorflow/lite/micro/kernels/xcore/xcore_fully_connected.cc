@@ -1,6 +1,7 @@
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/micro/kernels/kernel_util.h"
 #include "tensorflow/lite/micro/kernels/xcore/xcore_custom_options.h"
 #include "tensorflow/lite/micro/kernels/xcore/xcore_dispatcher.h"
 
@@ -87,15 +88,18 @@ TfLiteStatus Prepare_8(TfLiteContext* context, TfLiteNode* node) {
 }
 
 TfLiteStatus Eval_8(TfLiteContext* context, TfLiteNode* node) {
-  const TfLiteTensor* input = GetInput(context, node, 0);
-  const TfLiteTensor* weights = GetInput(context, node, 1);
-  const TfLiteTensor* bso = GetInput(context, node, 2);
-  TfLiteTensor* output = GetOutput(context, node, 0);
+  const TfLiteEvalTensor* input = tflite::micro::GetEvalInput(context, node, 0);
+  const TfLiteEvalTensor* weights =
+      tflite::micro::GetEvalInput(context, node, 1);
+  const TfLiteEvalTensor* bso = tflite::micro::GetEvalInput(context, node, 2);
+  TfLiteEvalTensor* output = tflite::micro::GetEvalOutput(context, node, 0);
+
+  const RuntimeShape weights_shape = tflite::micro::GetTensorShape(weights);
 
   FullyConnectedOpData* op =
       reinterpret_cast<FullyConnectedOpData*>(node->user_data);
 
-  int32_t C_in = weights->dims->data[1];
+  int32_t C_in = weights_shape.Dims(1);
 
   Dispatcher* dispatcher = GetDispatcher();
 
@@ -147,18 +151,22 @@ TfLiteStatus Eval_8(TfLiteContext* context, TfLiteNode* node) {
 
     // fetch the weights and biases
     weights_fetch_size = C_in * changrp.size;
-    dispatcher->FetchBuffer(&tW, &weights->data.int8[weights_src_offset],
-                            weights_fetch_size);
+    dispatcher->FetchBuffer(
+        &tW, &tflite::micro::GetTensorData<int8_t>(weights)[weights_src_offset],
+        weights_fetch_size);
     weights_dest_offset += weights_fetch_size;
     weights_src_offset += weights_fetch_size;
 
-    dispatcher->FetchBuffer((int8_t**)&tBSO, &bso->data.int8[biases_src_offset],
-                            bso_changrp_bytes);
+    dispatcher->FetchBuffer(
+        (int8_t**)&tBSO,
+        &tflite::micro::GetTensorData<int8_t>(bso)[biases_src_offset],
+        bso_changrp_bytes);
     biases_dest_offset += bso_changrp_bytes;
     biases_src_offset += bso_changrp_bytes;
 
-    thread_data[i_th].Y = &output->data.int8[changrp.start];
-    thread_data[i_th].X = input->data.int8;
+    thread_data[i_th].Y =
+        &tflite::micro::GetTensorData<int8_t>(output)[changrp.start];
+    thread_data[i_th].X = tflite::micro::GetTensorData<int8_t>(input);
     thread_data[i_th].W = tW;
     thread_data[i_th].BSO = (const nn_bso_block_t*)tBSO;
     thread_data[i_th].C_in = C_in;

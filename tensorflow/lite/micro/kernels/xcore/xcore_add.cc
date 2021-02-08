@@ -1,6 +1,7 @@
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/micro/kernels/kernel_util.h"
 #include "tensorflow/lite/micro/kernels/xcore/xcore_custom_options.h"
 #include "tensorflow/lite/micro/kernels/xcore/xcore_dispatcher.h"
 #include "tensorflow/lite/micro/kernels/xcore/xcore_ops.h"
@@ -74,9 +75,12 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  const TfLiteTensor* input0 = GetInput(context, node, 0);
-  const TfLiteTensor* input1 = GetInput(context, node, 1);
-  TfLiteTensor* output = GetOutput(context, node, 0);
+  const TfLiteEvalTensor* input0 =
+      tflite::micro::GetEvalInput(context, node, 0);
+  const TfLiteEvalTensor* input1 =
+      tflite::micro::GetEvalInput(context, node, 1);
+  TfLiteEvalTensor* output = tflite::micro::GetEvalOutput(context, node, 0);
+  const RuntimeShape output_shape = tflite::micro::GetTensorShape(output);
 
   AddOpData* op = reinterpret_cast<AddOpData*>(node->user_data);
   Dispatcher* dispatcher = GetDispatcher();
@@ -106,12 +110,12 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   // }
 
   // create 1 task for now
-  thread_data[0].Y = output->data.int8;
-  thread_data[0].X0 = input0->data.int8;
-  thread_data[0].X1 = input1->data.int8;
+  thread_data[0].Y = tflite::micro::GetTensorData<int8_t>(output);
+  thread_data[0].X0 = tflite::micro::GetTensorData<int8_t>(input0);
+  thread_data[0].X1 = tflite::micro::GetTensorData<int8_t>(input1);
   thread_data[0].params = &op->params;
   thread_data[0].start = 0;
-  thread_data[0].count = output->bytes;
+  thread_data[0].count = output_shape.FlatSize();
 
   dispatcher->AddTask(reinterpret_cast<void*>(&thread_data[0]));
 
