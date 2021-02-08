@@ -5,6 +5,7 @@
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/micro/kernels/xcore/xcore_custom_options.h"
 #include "tensorflow/lite/micro/kernels/xcore/xcore_dispatcher.h"
+#include "tensorflow/lite/micro/kernels/xcore/xcore_utils.h"
 
 extern "C" {
 #include "lib_nn/api/nn_operator.h"
@@ -166,9 +167,6 @@ enum class BConv2DKernelType {
   INT8_DIDO,
 };
 
-#define UNSUPPORTED_KERNEL_TYPE \
-  TF_LITE_FATAL("Unsupported BConv2DKernelType value")
-
 template <BConv2DKernelType kernel_type>
 struct BConv2DKernel {
   static inline const thread_function_t get_worker() {
@@ -181,7 +179,7 @@ struct BConv2DKernel {
     } else if (kernel_type == BConv2DKernelType::INT8_DIDO) {
       return bconv2d_int8_deepin_deepout_thread_worker;
     } else {
-      UNSUPPORTED_KERNEL_TYPE;
+      UNSUPPORTED_KERNEL_TYPE(BConv2DKernelType);
     }
   };
   static inline void calculate_worker_stack_size(size_t &stack_size) {
@@ -197,7 +195,7 @@ struct BConv2DKernel {
       GET_THREAD_FUNCTION_STACKSIZE(stack_size,
                                     bconv2d_int8_deepin_deepout_thread_worker);
     } else {
-      UNSUPPORTED_KERNEL_TYPE;
+      UNSUPPORTED_KERNEL_TYPE(BConv2DKernelType);
     }
   };
 };
@@ -259,16 +257,6 @@ void *Init(TfLiteContext *context, const char *buffer, size_t length) {
   return op_data;
 }
 
-static inline TfLiteStatus request_scratch_if_needed(TfLiteContext *context,
-                                                     const TfLiteTensor *tensor,
-                                                     int &scratch_idx) {
-  if (!is_ram_address((uintptr_t)tensor->data.data)) {
-    return context->RequestScratchBufferInArena(context, tensor->bytes,
-                                                &scratch_idx);
-  }
-  return kTfLiteOk;
-}
-
 TfLiteStatus PrepareCommon(TfLiteContext *context, TfLiteNode *node) {
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
@@ -321,7 +309,7 @@ TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
                                     op_data->accu_modifier_scratch_idx));
     }
   } else {
-    UNSUPPORTED_KERNEL_TYPE;
+    UNSUPPORTED_KERNEL_TYPE(BConv2DKernelType);
   }
 
   BConv2DKernel<kernel_type>::calculate_worker_stack_size(op_data->stack_size);
@@ -397,7 +385,7 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
           op_data->accu_modifier_scratch_idx));
     }
   } else {
-    UNSUPPORTED_KERNEL_TYPE;
+    UNSUPPORTED_KERNEL_TYPE(BConv2DKernelType);
   }
 
   // initialize the threads

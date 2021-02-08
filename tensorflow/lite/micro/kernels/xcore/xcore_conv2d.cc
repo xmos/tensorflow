@@ -3,6 +3,7 @@
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/micro/kernels/xcore/xcore_custom_options.h"
 #include "tensorflow/lite/micro/kernels/xcore/xcore_dispatcher.h"
+#include "tensorflow/lite/micro/kernels/xcore/xcore_utils.h"
 
 extern "C" {
 #include "lib_nn/api/nn_operator.h"
