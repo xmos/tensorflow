@@ -16,11 +16,11 @@ namespace xcore {
 
 // Default implementation.  Application can provide an alternative,
 //  more sophisticated implementation that supports SwMem and ExtMem
-__attribute__((weak)) void memload(void *dest, void *src, size_t size) {
-  // printf("memload dest=%d   src=%d   size=%d\n", (long)dest, (long)src,
-  // size);
-  memcpy(dest, src, size);
-}
+// __attribute__((weak)) void memload(void *dest, void *src, size_t size) {
+//   // printf("memload dest=%d   src=%d   size=%d\n", (long)dest, (long)src,
+//   // size);
+//   memcpy(dest, src, size);
+// }
 
 static Dispatcher *kDispatcher = nullptr;
 
