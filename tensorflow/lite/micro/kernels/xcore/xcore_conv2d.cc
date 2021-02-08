@@ -22,14 +22,6 @@ struct Conv2DThreadData {
   const nn_bso_block_t *BSO;
 };
 
-struct Conv2DThreadParams {
-  const nn_image_params_t *x_image;
-  const nn_image_params_t *y_image;
-  const nn_window_params_t *window;
-  int8_t zero_point;
-  nn_window_op_job_params_t job;
-};
-
 struct Conv2DOpData {
   Conv2DParams params;
   ExecutionPlan execution_plan;
@@ -38,6 +30,124 @@ struct Conv2DOpData {
   int weights_scratch_index;
   int bias_scratch_index;
 };
+
+// -------------------------------------------------------------------- //
+// thread data type and worker functions
+// -------------------------------------------------------------------- //
+
+struct Conv2DThreadParams {
+  const nn_image_params_t *x_image;
+  const nn_image_params_t *y_image;
+  const nn_window_params_t *window;
+  int8_t zero_point;
+  nn_window_op_job_params_t job;
+};
+
+struct Conv2DShallowThreadData {
+  Conv2DThreadData data;
+  Conv2DThreadParams params;
+};
+
+extern "C" {
+ATTRIBUTE_THREAD_FUNCTION void conv2d_shallow_thread_worker(void *context) {
+  Conv2DShallowThreadData *td = (Conv2DShallowThreadData *)context;
+  conv2d_shallowin_ext(td->data.Y, td->data.X, td->data.K, td->data.BSO,
+                       td->params.zero_point, td->params.x_image,
+                       td->params.y_image, td->params.window, &td->params.job,
+                       CONV2D_SHALLOWIN_FLAG_SLICED_K);
+}
+}
+
+struct Conv2DDeepThreadData {
+  Conv2DThreadData data;
+  Conv2DThreadParams params;
+};
+
+extern "C" {
+ATTRIBUTE_THREAD_FUNCTION void conv2d_deep_thread_worker(void *context) {
+  Conv2DDeepThreadData *td = (Conv2DDeepThreadData *)context;
+  conv2d_deep_ext(td->data.Y, td->data.X, td->data.K, td->data.BSO,
+                  td->params.zero_point, td->params.x_image, td->params.y_image,
+                  td->params.window, &td->params.job,
+                  CONV2D_DEEP_FLAG_SLICED_K);
+}
+}
+
+struct Conv2D1x1ThreadData {
+  Conv2DThreadData data;
+  const nn_image_params_t *x_image;
+  const nn_image_params_t *y_image;
+  nn_conv2d_1x1_job_params_t job;
+};
+
+extern "C" {
+ATTRIBUTE_THREAD_FUNCTION void conv2d_1x1_thread_worker(void *context) {
+  Conv2D1x1ThreadData *td = (Conv2D1x1ThreadData *)context;
+  conv2d_1x1_ext(td->data.Y, td->data.X, td->data.K, td->data.BSO, td->x_image,
+                 td->y_image, &td->job, CONV2D_1X1_FLAG_SLICED_K);
+}
+}
+
+struct Conv2DDepthwiseThreadData {
+  Conv2DThreadData data;
+  Conv2DThreadParams params;
+  nn_conv2d_depthwise_flags_e flags;
+};
+
+extern "C" {
+ATTRIBUTE_THREAD_FUNCTION void conv2d_depthwise_thread_worker(void *context) {
+  Conv2DDepthwiseThreadData *td = (Conv2DDepthwiseThreadData *)context;
+  conv2d_depthwise_ext(td->data.Y, td->data.X, td->data.K, td->data.BSO,
+                       td->params.zero_point, td->params.x_image,
+                       td->params.y_image, td->params.window, &td->params.job,
+                       td->flags);
+}
+}
+
+// -------------------------------------------------------------------- //
+// kernel types
+// -------------------------------------------------------------------- //
+
+enum class Conv2DKernelType {
+  DEEP,
+  SHALLOW,
+  ONE_BY_ONE,
+  DEPTHWISE,
+};
+
+template <Conv2DKernelType kernel_type>
+struct Conv2DKernel {
+  static inline const thread_function_t get_worker() {
+    if (kernel_type == Conv2DKernelType::DEEP) {
+      return conv2d_deep_thread_worker;
+    } else if (kernel_type == Conv2DKernelType::SHALLOW) {
+      return conv2d_shallow_thread_worker;
+    } else if (kernel_type == Conv2DKernelType::ONE_BY_ONE) {
+      return conv2d_1x1_thread_worker;
+    } else if (kernel_type == Conv2DKernelType::DEPTHWISE) {
+      return conv2d_depthwise_thread_worker;
+    } else {
+      UNSUPPORTED_KERNEL_TYPE(Conv2DKernelType);
+    }
+  };
+  static inline void calculate_worker_stack_size(size_t &stack_size) {
+    if (kernel_type == Conv2DKernelType::DEEP) {
+      GET_THREAD_FUNCTION_STACKSIZE(stack_size, conv2d_deep_thread_worker);
+    } else if (kernel_type == Conv2DKernelType::SHALLOW) {
+      GET_THREAD_FUNCTION_STACKSIZE(stack_size, conv2d_shallow_thread_worker);
+    } else if (kernel_type == Conv2DKernelType::ONE_BY_ONE) {
+      GET_THREAD_FUNCTION_STACKSIZE(stack_size, conv2d_1x1_thread_worker);
+    } else if (kernel_type == Conv2DKernelType::DEPTHWISE) {
+      GET_THREAD_FUNCTION_STACKSIZE(stack_size, conv2d_depthwise_thread_worker);
+    } else {
+      UNSUPPORTED_KERNEL_TYPE(Conv2DKernelType);
+    }
+  };
+};
+
+// -------------------------------------------------------------------- //
+// op function implementations
+// -------------------------------------------------------------------- //
 
 void *Init(TfLiteContext *context, const char *buffer, size_t length) {
   auto *op_data = reinterpret_cast<Conv2DOpData *>(
@@ -55,6 +165,49 @@ void *Init(TfLiteContext *context, const char *buffer, size_t length) {
   return op_data;
 }
 
+TfLiteStatus PrepareCommon(TfLiteContext *context, TfLiteNode *node) {
+  TF_LITE_ENSURE_EQ(context, NumInputs(node), 3);
+  TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
+
+  Conv2DOpData *op_data = reinterpret_cast<Conv2DOpData *>(node->user_data);
+
+  TF_LITE_ENSURE_STATUS(request_scratch_if_needed(
+      context, GetInput(context, node, 1), op_data->weights_scratch_index));
+  TF_LITE_ENSURE_STATUS(request_scratch_if_needed(
+      context, GetInput(context, node, 2), op_data->bias_scratch_index));
+
+  return kTfLiteOk;
+}
+
+template <Conv2DKernelType kernel_type>
+TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
+  TF_LITE_ENSURE_STATUS(PrepareCommon(context, node));
+
+  auto *op_data = reinterpret_cast<Conv2DOpData *>(node->user_data);
+
+  // allocate the stack for thread workers
+  Conv2DKernel<kernel_type>::calculate_worker_stack_size(op_data->stack_size);
+  TF_LITE_ENSURE_STATUS(context->RequestScratchBufferInArena(
+      context, op_data->stack_size * op_data->execution_plan.regions.GetSize(),
+      &op_data->stack_scratch_index));
+
+  if (kernel_type != Conv2DKernelType::ONE_BY_ONE) {
+    auto const *weights = GetInput(context, node, 1);
+    if (kernel_type == Conv2DKernelType::SHALLOW) {
+      op_data->params.K_h = weights->dims->data[1];
+    } else if (kernel_type == Conv2DKernelType::DEPTHWISE) {
+      auto const *weights = GetInput(context, node, 1);
+      op_data->params.K_h = weights->dims->data[0];
+      op_data->params.K_w = weights->dims->data[1];
+    } else if (kernel_type == Conv2DKernelType::DEEP) {
+      op_data->params.K_h = weights->dims->data[1];
+      op_data->params.K_w = weights->dims->data[2];
+    }
+  }
+
+  return kTfLiteOk;
+}
+
 //**************************************
 //**************************************
 //**************************************
@@ -63,54 +216,6 @@ void *Init(TfLiteContext *context, const char *buffer, size_t length) {
 //**************************************
 //**************************************
 namespace shallow {
-
-struct Conv2DShallowThreadData {
-  Conv2DThreadData data;
-  Conv2DThreadParams params;
-};
-
-extern "C" {
-ATTRIBUTE_THREAD_FUNCTION void conv2d_shallow_thread_worker(void *context) {
-  Conv2DShallowThreadData *td = (Conv2DShallowThreadData *)context;
-  conv2d_shallowin_ext(td->data.Y, td->data.X, td->data.K, td->data.BSO,
-                       td->params.zero_point, td->params.x_image,
-                       td->params.y_image, td->params.window, &td->params.job,
-                       CONV2D_SHALLOWIN_FLAG_SLICED_K);
-}
-}
-
-TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
-  TF_LITE_ENSURE_EQ(context, NumInputs(node), 3);
-  TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
-
-  const TfLiteTensor *weights = GetInput(context, node, 1);
-  const TfLiteTensor *bso = GetInput(context, node, 2);
-
-  auto *op = reinterpret_cast<Conv2DOpData *>(node->user_data);
-
-  // set param values not parsed from custom options
-  op->params.K_h = weights->dims->data[1];
-
-  // allocate the stack for thread workers
-  GET_THREAD_FUNCTION_STACKSIZE(op->stack_size, conv2d_shallow_thread_worker);
-  TF_LITE_ENSURE_STATUS(context->RequestScratchBufferInArena(
-      context, op->stack_size * op->execution_plan.GetNumThreads(),
-      &op->stack_scratch_index));
-
-  // allocate scratch buffers for weights and biases (if necessary)
-  if (!is_ram_address((uintptr_t)weights->data.int8)) {
-    TF_LITE_ENSURE_STATUS(context->RequestScratchBufferInArena(
-        context, op->execution_plan.GetWeightsScratchSize(),
-        &op->weights_scratch_index));
-  }
-  if (!is_ram_address((uintptr_t)bso->data.i16)) {
-    TF_LITE_ENSURE_STATUS(context->RequestScratchBufferInArena(
-        context, op->execution_plan.GetBiasScratchSize(),
-        &op->bias_scratch_index));
-  }
-
-  return kTfLiteOk;
-}
 
 TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
   const TfLiteTensor *input = GetInput(context, node, 0);
@@ -210,55 +315,6 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
 //**************************************
 namespace deep {
 
-struct Conv2DDeepThreadData {
-  Conv2DThreadData data;
-  Conv2DThreadParams params;
-};
-
-extern "C" {
-ATTRIBUTE_THREAD_FUNCTION void conv2d_deep_thread_worker(void *context) {
-  Conv2DDeepThreadData *td = (Conv2DDeepThreadData *)context;
-  conv2d_deep_ext(td->data.Y, td->data.X, td->data.K, td->data.BSO,
-                  td->params.zero_point, td->params.x_image, td->params.y_image,
-                  td->params.window, &td->params.job,
-                  CONV2D_DEEP_FLAG_SLICED_K);
-}
-}
-
-TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
-  TF_LITE_ENSURE_EQ(context, NumInputs(node), 3);
-  TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
-
-  const TfLiteTensor *weights = GetInput(context, node, 1);
-  const TfLiteTensor *bso = GetInput(context, node, 2);
-
-  Conv2DOpData *op = reinterpret_cast<Conv2DOpData *>(node->user_data);
-
-  // set param values not parsed from custom options
-  op->params.K_h = weights->dims->data[1];
-  op->params.K_w = weights->dims->data[2];
-
-  // allocate the stack for thread workers
-  GET_THREAD_FUNCTION_STACKSIZE(op->stack_size, conv2d_deep_thread_worker);
-  TF_LITE_ENSURE_STATUS(context->RequestScratchBufferInArena(
-      context, op->stack_size * op->execution_plan.GetNumThreads(),
-      &op->stack_scratch_index));
-
-  // allocate scratch buffers for weights and biases (if necessary)
-  if (!is_ram_address((uintptr_t)weights->data.int8)) {
-    TF_LITE_ENSURE_STATUS(context->RequestScratchBufferInArena(
-        context, op->execution_plan.GetWeightsScratchSize(),
-        &op->weights_scratch_index));
-  }
-  if (!is_ram_address((uintptr_t)bso->data.i16)) {
-    TF_LITE_ENSURE_STATUS(context->RequestScratchBufferInArena(
-        context, op->execution_plan.GetBiasScratchSize(),
-        &op->bias_scratch_index));
-  }
-
-  return kTfLiteOk;
-}
-
 TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
   const TfLiteTensor *input = GetInput(context, node, 0);
   const TfLiteTensor *weights = GetInput(context, node, 1);
@@ -356,51 +412,6 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
 //**************************************
 namespace n1x1 {
 
-struct Conv2D1x1ThreadData {
-  Conv2DThreadData data;
-  const nn_image_params_t *x_image;
-  const nn_image_params_t *y_image;
-  nn_conv2d_1x1_job_params_t job;
-};
-
-extern "C" {
-ATTRIBUTE_THREAD_FUNCTION void conv2d_1x1_thread_worker(void *context) {
-  Conv2D1x1ThreadData *td = (Conv2D1x1ThreadData *)context;
-  conv2d_1x1_ext(td->data.Y, td->data.X, td->data.K, td->data.BSO, td->x_image,
-                 td->y_image, &td->job, CONV2D_1X1_FLAG_SLICED_K);
-}
-}
-
-TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
-  TF_LITE_ENSURE_EQ(context, NumInputs(node), 3);
-  TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
-
-  const TfLiteTensor *weights = GetInput(context, node, 1);
-  const TfLiteTensor *bso = GetInput(context, node, 2);
-
-  Conv2DOpData *op = reinterpret_cast<Conv2DOpData *>(node->user_data);
-
-  // allocate the stack for thread workers
-  GET_THREAD_FUNCTION_STACKSIZE(op->stack_size, conv2d_shallow_thread_worker);
-  TF_LITE_ENSURE_STATUS(context->RequestScratchBufferInArena(
-      context, op->stack_size * op->execution_plan.GetNumThreads(),
-      &op->stack_scratch_index));
-
-  // allocate scratch buffers for weights and biases (if necessary)
-  if (!is_ram_address((uintptr_t)weights->data.int8)) {
-    TF_LITE_ENSURE_STATUS(context->RequestScratchBufferInArena(
-        context, op->execution_plan.GetWeightsScratchSize(),
-        &op->weights_scratch_index));
-  }
-  if (!is_ram_address((uintptr_t)bso->data.i16)) {
-    TF_LITE_ENSURE_STATUS(context->RequestScratchBufferInArena(
-        context, op->execution_plan.GetBiasScratchSize(),
-        &op->bias_scratch_index));
-  }
-
-  return kTfLiteOk;
-}
-
 TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
   const TfLiteTensor *input = GetInput(context, node, 0);
   const TfLiteTensor *weights = GetInput(context, node, 1);
@@ -491,22 +502,6 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
 
 namespace depthwise {
 
-struct Conv2DDepthwiseThreadData {
-  Conv2DThreadData data;
-  Conv2DThreadParams params;
-  nn_conv2d_depthwise_flags_e flags;
-};
-
-extern "C" {
-ATTRIBUTE_THREAD_FUNCTION void conv2d_depthwise_thread_worker(void *context) {
-  Conv2DDepthwiseThreadData *td = (Conv2DDepthwiseThreadData *)context;
-  conv2d_depthwise_ext(td->data.Y, td->data.X, td->data.K, td->data.BSO,
-                       td->params.zero_point, td->params.x_image,
-                       td->params.y_image, td->params.window, &td->params.job,
-                       td->flags);
-}
-}
-
 static void fetch_depthwise_subtensor(int8_t *dest, const int8_t *weights,
                                       const unsigned K_h, const unsigned K_w,
                                       const unsigned X_c,
@@ -527,40 +522,6 @@ static void fetch_depthwise_subtensor(int8_t *dest, const int8_t *weights,
     dest = &(dest[channel_count]);
     weights = &(weights[X_c]);
   }
-}
-
-TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
-  TF_LITE_ENSURE_EQ(context, NumInputs(node), 3);
-  TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
-
-  const TfLiteTensor *weights = GetInput(context, node, 1);
-  const TfLiteTensor *bso = GetInput(context, node, 2);
-
-  Conv2DOpData *op = reinterpret_cast<Conv2DOpData *>(node->user_data);
-
-  // set param values not parsed from custom options
-  op->params.K_h = weights->dims->data[0];
-  op->params.K_w = weights->dims->data[1];
-
-  // allocate the stack for thread workers
-  GET_THREAD_FUNCTION_STACKSIZE(op->stack_size, conv2d_depthwise_thread_worker);
-  TF_LITE_ENSURE_STATUS(context->RequestScratchBufferInArena(
-      context, op->stack_size * op->execution_plan.regions.GetSize(),
-      &op->stack_scratch_index));
-
-  // allocate scratch buffers for weights and biases (if necessary)
-  if (!is_ram_address((uintptr_t)weights->data.int8)) {
-    TF_LITE_ENSURE_STATUS(context->RequestScratchBufferInArena(
-        context, op->execution_plan.GetWeightsScratchSize(),
-        &op->weights_scratch_index));
-  }
-  if (!is_ram_address((uintptr_t)bso->data.i16)) {
-    TF_LITE_ENSURE_STATUS(context->RequestScratchBufferInArena(
-        context, op->execution_plan.GetBiasScratchSize(),
-        &op->bias_scratch_index));
-  }
-
-  return kTfLiteOk;
 }
 
 TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
@@ -668,26 +629,30 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
 }  // namespace conv
 
 TfLiteRegistration *Register_Conv2D_Deep() {
-  static TfLiteRegistration r = {conv::Init, nullptr, conv::deep::Prepare,
+  static TfLiteRegistration r = {conv::Init, nullptr,
+                                 conv::Prepare<conv::Conv2DKernelType::DEEP>,
                                  conv::deep::Eval};
   return &r;
 }
 
 TfLiteRegistration *Register_Conv2D_Shallow() {
-  static TfLiteRegistration r = {conv::Init, nullptr, conv::shallow::Prepare,
+  static TfLiteRegistration r = {conv::Init, nullptr,
+                                 conv::Prepare<conv::Conv2DKernelType::SHALLOW>,
                                  conv::shallow::Eval};
   return &r;
 }
 
 TfLiteRegistration *Register_Conv2D_1x1() {
-  static TfLiteRegistration r = {conv::Init, nullptr, conv::n1x1::Prepare,
-                                 conv::n1x1::Eval};
+  static TfLiteRegistration r = {
+      conv::Init, nullptr, conv::Prepare<conv::Conv2DKernelType::ONE_BY_ONE>,
+      conv::n1x1::Eval};
   return &r;
 }
 
 TfLiteRegistration *Register_Conv2D_Depthwise() {
-  static TfLiteRegistration r = {conv::Init, nullptr, conv::depthwise::Prepare,
-                                 conv::depthwise::Eval};
+  static TfLiteRegistration r = {
+      conv::Init, nullptr, conv::Prepare<conv::Conv2DKernelType::DEPTHWISE>,
+      conv::depthwise::Eval};
   return &r;
 }
 
