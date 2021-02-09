@@ -3,9 +3,11 @@
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/micro/kernels/kernel_util.h"
 #include "tensorflow/lite/micro/kernels/xcore/xcore_custom_options.h"
 #include "tensorflow/lite/micro/kernels/xcore/xcore_dispatcher.h"
 #include "tensorflow/lite/micro/kernels/xcore/xcore_utils.h"
+#include "tensorflow/lite/util.h"
 
 extern "C" {
 #include "lib_nn/api/nn_operator.h"
@@ -333,17 +335,22 @@ TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
 }
 
 template <typename T>
-static inline TfLiteStatus fetch_scratch_if_needed(TfLiteContext *context,
-                                                   T *&array,
-                                                   const TfLiteTensor *tensor,
-                                                   int scratch_idx) {
+static inline TfLiteStatus fetch_scratch_if_needed(
+    TfLiteContext *context, T *&array, const TfLiteEvalTensor *tensor,
+    int scratch_idx) {
   if (scratch_idx >= 0) {
     array =
         static_cast<const T *>(context->GetScratchBuffer(context, scratch_idx));
+    const RuntimeShape shape = tflite::micro::GetTensorShape(tensor);
+
+    size_t sizeof_tensor_type;
+    GetSizeOfType(context, tensor->type, &sizeof_tensor_type);
+
     GetDispatcher()->FetchBuffer((int8_t **)&array,
-                                 GetTensorData<int8_t>(tensor), tensor->bytes);
+                                 tflite::micro::GetTensorData<int8_t>(tensor),
+                                 shape.FlatSize() * sizeof_tensor_type);
   } else {
-    array = GetTensorData<T>(tensor);
+    array = tflite::micro::GetTensorData<T>(tensor);
   }
   TF_LITE_ENSURE(context, array);
   return kTfLiteOk;
@@ -352,36 +359,43 @@ static inline TfLiteStatus fetch_scratch_if_needed(TfLiteContext *context,
 template <BConv2DKernelType kernel_type>
 TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
   auto *op_data = reinterpret_cast<BConv2DOpData *>(node->user_data);
-  op_data->args.X = GetTensorData<bnn_b32_t>(GetInput(context, node, 0));
+  op_data->args.X = tflite::micro::GetTensorData<bnn_b32_t>(
+      tflite::micro::GetEvalInput(context, node, 0));
 
-  TF_LITE_ENSURE_STATUS(fetch_scratch_if_needed(context, op_data->args.K,
-                                                GetInput(context, node, 1),
-                                                op_data->weights_scratch_idx));
+  TF_LITE_ENSURE_STATUS(fetch_scratch_if_needed(
+      context, op_data->args.K, tflite::micro::GetEvalInput(context, node, 1),
+      op_data->weights_scratch_idx));
 
   if (kernel_type == BConv2DKernelType::BITPACKED ||
       kernel_type == BConv2DKernelType::BITPACKED_DI) {
-    op_data->args.Y_bitpacked =
-        GetTensorData<bnn_b32_t>(GetOutput(context, node, 0));
-    TF_LITE_ENSURE_STATUS(fetch_scratch_if_needed(
-        context, op_data->args.thresholds, GetInput(context, node, 2),
-        op_data->threshold_scratch_idx));
+    op_data->args.Y_bitpacked = tflite::micro::GetTensorData<bnn_b32_t>(
+        tflite::micro::GetEvalOutput(context, node, 0));
+    TF_LITE_ENSURE_STATUS(
+        fetch_scratch_if_needed(context, op_data->args.thresholds,
+                                tflite::micro::GetEvalInput(context, node, 2),
+                                op_data->threshold_scratch_idx));
   } else if (kernel_type == BConv2DKernelType::INT8 ||
              kernel_type == BConv2DKernelType::INT8_DIDO) {
-    op_data->args.Y_int8 = GetTensorData<int8_t>(GetOutput(context, node, 0));
-    TF_LITE_ENSURE_STATUS(fetch_scratch_if_needed(
-        context, op_data->args.post_act_mult, GetInput(context, node, 2),
-        op_data->multiplier_scratch_idx));
-    TF_LITE_ENSURE_STATUS(fetch_scratch_if_needed(
-        context, op_data->args.post_act_bias, GetInput(context, node, 3),
-        op_data->bias_scratch_idx));
-    TF_LITE_ENSURE_STATUS(fetch_scratch_if_needed(
-        context, op_data->args.output_trf_parameters,
-        GetInput(context, node, 4), op_data->output_trf_scratch_idx));
+    op_data->args.Y_int8 = tflite::micro::GetTensorData<int8_t>(
+        tflite::micro::GetEvalOutput(context, node, 0));
 
+    TF_LITE_ENSURE_STATUS(
+        fetch_scratch_if_needed(context, op_data->args.post_act_mult,
+                                tflite::micro::GetEvalInput(context, node, 2),
+                                op_data->multiplier_scratch_idx));
+    TF_LITE_ENSURE_STATUS(
+        fetch_scratch_if_needed(context, op_data->args.post_act_bias,
+                                tflite::micro::GetEvalInput(context, node, 3),
+                                op_data->bias_scratch_idx));
+    TF_LITE_ENSURE_STATUS(
+        fetch_scratch_if_needed(context, op_data->args.output_trf_parameters,
+                                tflite::micro::GetEvalInput(context, node, 4),
+                                op_data->output_trf_scratch_idx));
     if (kernel_type == BConv2DKernelType::INT8) {
-      TF_LITE_ENSURE_STATUS(fetch_scratch_if_needed(
-          context, op_data->args.accu_modifier, GetInput(context, node, 5),
-          op_data->accu_modifier_scratch_idx));
+      TF_LITE_ENSURE_STATUS(
+          fetch_scratch_if_needed(context, op_data->args.accu_modifier,
+                                  tflite::micro::GetEvalInput(context, node, 5),
+                                  op_data->accu_modifier_scratch_idx));
     }
   } else {
     UNSUPPORTED_KERNEL_TYPE(BConv2DKernelType);

@@ -1,6 +1,7 @@
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/micro/kernels/kernel_util.h"
 
 extern "C" {
 #include "lib_nn/api/nn_operator.h"
@@ -20,11 +21,14 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  const TfLiteTensor* input = GetInput(context, node, 0);
-  TfLiteTensor* output = GetOutput(context, node, 0);
-  int32_t length = input->bytes / sizeof(int16_t);
+  const TfLiteEvalTensor* input = tflite::micro::GetEvalInput(context, node, 0);
+  TfLiteEvalTensor* output = tflite::micro::GetEvalOutput(context, node, 0);
 
-  argmax_16(output->data.i32, input->data.i16, length);
+  const RuntimeShape input_shape = tflite::micro::GetTensorShape(input);
+
+  argmax_16(tflite::micro::GetTensorData<int32_t>(output),
+            tflite::micro::GetTensorData<int16_t>(input),
+            input_shape.FlatSize());
 
   return kTfLiteOk;
 }
