@@ -142,19 +142,19 @@ struct BConv2DOpData {
 
   ExecutionPlan execution_plan;
 
-  size_t stack_size;  // The amount of stack required to run n_threads-many
-                      // thread workers
-  int stack_scratch_index;  // The buffer index where the above stack will be
-                            // allocated
+  size_t stack_size = 0;  // The amount of stack required to run n_threads-many
+                          // thread workers
+  int stack_scratch_index = -1;  // The buffer index where the above stack will
+                                 // be allocated
 
   // TODO: remove this  when better external memory handling is implemented
   // for loading from external mem
-  int weights_scratch_idx = 0;
-  int threshold_scratch_idx = 0;
-  int bias_scratch_idx = 0;
-  int multiplier_scratch_idx = 0;
-  int accu_modifier_scratch_idx = 0;
-  int output_trf_scratch_idx = 0;
+  int weights_scratch_idx = -1;
+  int threshold_scratch_idx = -1;
+  int bias_scratch_idx = -1;
+  int multiplier_scratch_idx = -1;
+  int accu_modifier_scratch_idx = -1;
+  int output_trf_scratch_idx = -1;
 };
 
 // -------------------------------------------------------------------- //
@@ -206,8 +206,7 @@ struct BConv2DKernel {
 // -------------------------------------------------------------------- //
 
 void *Init(TfLiteContext *context, const char *buffer, size_t length) {
-  auto *op_data = reinterpret_cast<BConv2DOpData *>(
-      context->AllocatePersistentBuffer(context, sizeof(BConv2DOpData)));
+  auto *op_data = intialize_persistent_buffer<BConv2DOpData>(context);
 
   // parse custom options
   TFLITE_DCHECK(buffer != nullptr);

@@ -19,10 +19,10 @@ namespace conv {
 struct Conv2DOpData {
   Conv2DParams params;
   ExecutionPlan execution_plan;
-  int stack_scratch_index;
-  size_t stack_size;
-  int weights_scratch_index;
-  int bias_scratch_index;
+  int stack_scratch_index = -1;
+  size_t stack_size = 0;
+  int weights_scratch_index = -1;
+  int bias_scratch_index = -1;
 };
 
 // -------------------------------------------------------------------- //
@@ -46,20 +46,20 @@ struct Conv2DThreadData {
 
 extern "C" {
 ATTRIBUTE_THREAD_FUNCTION void conv2d_shallow_thread_worker(void *context) {
-  Conv2DThreadData *td = (Conv2DThreadData *)context;
+  auto *td = static_cast<Conv2DThreadData *>(context);
   conv2d_shallowin_ext(td->Y, td->X, td->K, td->BSO, td->zero_point,
                        td->x_image, td->y_image, td->window, &td->job,
                        CONV2D_SHALLOWIN_FLAG_SLICED_K);
 }
 
 ATTRIBUTE_THREAD_FUNCTION void conv2d_deep_thread_worker(void *context) {
-  Conv2DThreadData *td = (Conv2DThreadData *)context;
+  auto *td = static_cast<Conv2DThreadData *>(context);
   conv2d_deep_ext(td->Y, td->X, td->K, td->BSO, td->zero_point, td->x_image,
                   td->y_image, td->window, &td->job, CONV2D_DEEP_FLAG_SLICED_K);
 }
 
 ATTRIBUTE_THREAD_FUNCTION void conv2d_1x1_thread_worker(void *context) {
-  Conv2DThreadData *td = (Conv2DThreadData *)context;
+  auto *td = static_cast<Conv2DThreadData *>(context);
 
   // TODO: consider changing the kernel to unify this job struct
   nn_conv2d_1x1_job_params_t job;
@@ -71,7 +71,7 @@ ATTRIBUTE_THREAD_FUNCTION void conv2d_1x1_thread_worker(void *context) {
 }
 
 ATTRIBUTE_THREAD_FUNCTION void conv2d_depthwise_thread_worker(void *context) {
-  Conv2DThreadData *td = (Conv2DThreadData *)context;
+  auto *td = static_cast<Conv2DThreadData *>(context);
   conv2d_depthwise_ext(td->Y, td->X, td->K, td->BSO, td->zero_point,
                        td->x_image, td->y_image, td->window, &td->job,
                        td->flags);
@@ -124,12 +124,7 @@ struct Conv2DKernel {
 // -------------------------------------------------------------------- //
 
 void *Init(TfLiteContext *context, const char *buffer, size_t length) {
-  auto *op_data = reinterpret_cast<Conv2DOpData *>(
-      context->AllocatePersistentBuffer(context, sizeof(Conv2DOpData)));
-  op_data->stack_scratch_index = -1;
-  op_data->stack_size = 0;
-  op_data->weights_scratch_index = -1;
-  op_data->bias_scratch_index = -1;
+  auto *op_data = intialize_persistent_buffer<Conv2DOpData>(context);
 
   // parse custom options
   TFLITE_DCHECK(buffer != nullptr);
@@ -143,7 +138,7 @@ TfLiteStatus PrepareCommon(TfLiteContext *context, TfLiteNode *node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 3);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
-  Conv2DOpData *op_data = reinterpret_cast<Conv2DOpData *>(node->user_data);
+  auto *op_data = reinterpret_cast<Conv2DOpData *>(node->user_data);
 
   TF_LITE_ENSURE_STATUS(request_scratch_if_needed(
       context, GetInput(context, node, 1), op_data->weights_scratch_index));

@@ -20,6 +20,11 @@ T unpack(const uint8_t *buffer) {
   return retval;
 }
 
+template <typename T>
+static inline T *intialize_persistent_buffer(TfLiteContext *context) {
+  return new (context->AllocatePersistentBuffer(context, sizeof(T))) T;
+}
+
 static inline bool is_ram_address(uintptr_t a) {
 #ifdef XCORE
   return ((a >= 0x80000) && (a <= 0x100000));
