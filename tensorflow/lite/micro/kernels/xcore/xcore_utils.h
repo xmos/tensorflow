@@ -30,6 +30,39 @@ static inline TfLiteStatus request_scratch_if_needed(TfLiteContext *context,
   return kTfLiteOk;
 }
 
+template <typename T>
+class PersistentArray {
+ private:
+  int32_t max_size_;
+  int32_t size_;
+  T *data_;
+
+ public:
+  PersistentArray() : size_(0), max_size_(0), data_(nullptr) {}
+  void allocate(TfLiteContext *context, size_t max_size) {
+    assert(data_ == nullptr);
+    assert(max_size_ > 0);
+
+    max_size_ = max_size;
+    data_ = reinterpret_cast<T *>(
+        context->AllocatePersistentBuffer(context, sizeof(T) * max_size));
+  }
+  inline T &operator[](int i) noexcept {
+    assert(i < size_);
+    return data_[i];
+  }
+  inline void append(const T &element) noexcept {
+    assert(size_ < max_size_);
+    data_[size_++] = element;
+  }
+  inline void append(T &&element) noexcept {
+    assert(size_ < max_size_);
+    data_[size_++] = std::move(element);
+  }
+  inline size_t size() noexcept;
+  inline size_t max_size() noexcept;
+};
+
 #ifndef UNSUPPORTED_KERNEL_TYPE
 #define UNSUPPORTED_KERNEL_TYPE(T) TF_LITE_FATAL("Unsupported " #T " value")
 #endif /*UNSUPPORTED_KERNEL_TYPE*/

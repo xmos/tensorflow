@@ -6,6 +6,7 @@
 #include <iostream>
 
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/micro/kernels/xcore/xcore_utils.h"
 
 namespace tflite {
 namespace ops {
@@ -23,40 +24,11 @@ typedef struct RowColRegion {
   int32_t cols;
 } RowColRegion;
 
-class RowColRegionArray {
- public:
-  RowColRegionArray();
-  void Init(TfLiteContext *ctx, size_t size);
-  const RowColRegion &operator[](int i);
-  void Append(const RowColRegion &region);
-
-  size_t GetSize();
-
- private:
-  int32_t next_;
-  int32_t size_;
-  RowColRegion *regions_;
-};
-
 typedef struct ChannelGroup {
   int32_t index;
   int32_t start;
   int32_t size;
 } ChannelGroup;
-
-class ChannelGroupArray {
- public:
-  ChannelGroupArray();
-  void Init(TfLiteContext *ctx, size_t size);
-  const ChannelGroup &operator[](int i);
-  void Append(const ChannelGroup &changrp);
-  size_t GetSize();
-
- private:
-  int32_t next_;
-  int32_t size_;
-  ChannelGroup *chan_groups_;
-};
 
 class ExecutionPlan {
  public:
@@ -74,8 +46,8 @@ class ExecutionPlan {
   size_t GetBiasScratchSize();
   size_t GetBiasScratchOffset();
 
-  RowColRegionArray regions;
-  ChannelGroupArray changrps;
+  PersistentArray<RowColRegion> regions;
+  PersistentArray<ChannelGroup> changrps;
 
  private:
   size_t n_threads_;
