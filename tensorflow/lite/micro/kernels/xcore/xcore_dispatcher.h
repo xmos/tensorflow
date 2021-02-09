@@ -8,6 +8,10 @@
 #include "tensorflow/lite/micro/kernels/xcore/xcore_planning.h"
 #include "tensorflow/lite/micro/micro_error_reporter.h"
 
+extern "C" {
+void memload(void *dest, void *src, size_t size);
+}
+
 #ifdef XCORE
 extern "C" {
 #ifdef _TIME_H_

@@ -4,6 +4,7 @@
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/micro/kernels/kernel_util.h"
 #include "tensorflow/lite/micro/kernels/xcore/xcore_custom_options.h"
 #include "tensorflow/lite/micro/kernels/xcore/xcore_dispatcher.h"
 
@@ -96,9 +97,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  const TfLiteTensor* input = GetInput(context, node, 0);
-  TfLiteTensor* output = GetOutput(context, node, 0);
-  const int32_t length = input->bytes / sizeof(int8_t);
+  const TfLiteEvalTensor* input = tflite::micro::GetEvalInput(context, node, 0);
+  TfLiteEvalTensor* output = tflite::micro::GetEvalOutput(context, node, 0);
 
   BSign8OpData* op = reinterpret_cast<BSign8OpData*>(node->user_data);
 
@@ -122,8 +122,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   }
 
   for (int i_job = 0; i_job < op->n_threads; i_job++) {
-    thread_data[i_job].Y = (int32_t*)output->data.i32;
-    thread_data[i_job].X = (int8_t*)input->data.int8;
+    thread_data[i_job].Y = tflite::micro::GetTensorData<int32_t>(output);
+    thread_data[i_job].X = tflite::micro::GetTensorData<int8_t>(input);
     thread_data[i_job].job = &op->jobs[i_job];
     thread_data[i_job].plan = &op->plan;
     dispatcher->AddTask(reinterpret_cast<void*>(&thread_data[i_job]));

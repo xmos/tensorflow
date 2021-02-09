@@ -1,6 +1,7 @@
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/micro/kernels/kernel_util.h"
 #include "tensorflow/lite/micro/kernels/xcore/xcore_custom_options.h"
 #include "tensorflow/lite/micro/kernels/xcore/xcore_dispatcher.h"
 #include "tensorflow/lite/micro/kernels/xcore/xcore_ops.h"
@@ -88,8 +89,11 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  const TfLiteTensor* input = GetInput(context, node, 0);
-  TfLiteTensor* output = GetOutput(context, node, 0);
+  const TfLiteEvalTensor* input = tflite::micro::GetEvalInput(context, node, 0);
+  TfLiteEvalTensor* output = tflite::micro::GetEvalOutput(context, node, 0);
+
+  const RuntimeShape input_shape = tflite::micro::GetTensorShape(input);
+  const RuntimeShape output_shape = tflite::micro::GetTensorShape(output);
 
   MaxPoolOpData* op = reinterpret_cast<MaxPoolOpData*>(node->user_data);
   Dispatcher* dispatcher = GetDispatcher();
@@ -105,12 +109,12 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   MaxPoolThreadData thread_data[n_th];
 
   // setup params common to all thread workers
-  nn_image_params_t in_image = {(uint32_t)input->dims->data[1],
-                                (uint32_t)input->dims->data[2],
-                                (uint32_t)input->dims->data[3]};
-  nn_image_params_t out_image = {(uint32_t)output->dims->data[1],
-                                 (uint32_t)output->dims->data[2],
-                                 (uint32_t)output->dims->data[3]};
+  nn_image_params_t in_image = {(uint32_t)input_shape.Dims(1),
+                                (uint32_t)input_shape.Dims(2),
+                                (uint32_t)input_shape.Dims(3)};
+  nn_image_params_t out_image = {(uint32_t)output_shape.Dims(1),
+                                 (uint32_t)output_shape.Dims(2),
+                                 (uint32_t)output_shape.Dims(3)};
   nn_window_params_t pooling_window = {
       {(uint32_t)op->params.pool_h, (uint32_t)op->params.pool_w},
       {0, 0},
@@ -119,14 +123,14 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   // create tasks
   for (int i_rg = 0; i_rg < op->execution_plan.regions.GetSize(); i_rg++) {
     const RowColRegion& region = op->execution_plan.regions[i_rg];
-    thread_data[i_rg].data.Y = (nn_image_t*)output->data.int8;
-    thread_data[i_rg].data.X = (const nn_image_t*)input->data.int8;
+    thread_data[i_rg].data.Y = tflite::micro::GetTensorData<nn_image_t>(output);
+    thread_data[i_rg].data.X = tflite::micro::GetTensorData<nn_image_t>(input);
     thread_data[i_rg].params.x_image = &in_image;
     thread_data[i_rg].params.y_image = &out_image;
     thread_data[i_rg].params.window = &pooling_window;
     thread_data[i_rg].params.job = {
         {region.top, region.left, 0},
-        {region.rows, region.cols, output->dims->data[3]}};
+        {region.rows, region.cols, output_shape.Dims(3)}};
 
     dispatcher->AddTask(reinterpret_cast<void*>(&thread_data[i_rg]));
   }
@@ -199,8 +203,11 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  const TfLiteTensor* input = GetInput(context, node, 0);
-  TfLiteTensor* output = GetOutput(context, node, 0);
+  const TfLiteEvalTensor* input = tflite::micro::GetEvalInput(context, node, 0);
+  TfLiteEvalTensor* output = tflite::micro::GetEvalOutput(context, node, 0);
+
+  const RuntimeShape input_shape = tflite::micro::GetTensorShape(input);
+  const RuntimeShape output_shape = tflite::micro::GetTensorShape(output);
 
   AvgPoolOpData* op = reinterpret_cast<AvgPoolOpData*>(node->user_data);
   Dispatcher* dispatcher = GetDispatcher();
@@ -216,12 +223,12 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   AvgPoolThreadData thread_data[n_th];
 
   // setup params common to all thread workers
-  nn_image_params_t in_image = {(uint32_t)input->dims->data[1],
-                                (uint32_t)input->dims->data[2],
-                                (uint32_t)input->dims->data[3]};
-  nn_image_params_t out_image = {(uint32_t)output->dims->data[1],
-                                 (uint32_t)output->dims->data[2],
-                                 (uint32_t)output->dims->data[3]};
+  nn_image_params_t in_image = {(uint32_t)input_shape.Dims(1),
+                                (uint32_t)input_shape.Dims(2),
+                                (uint32_t)input_shape.Dims(3)};
+  nn_image_params_t out_image = {(uint32_t)output_shape.Dims(1),
+                                 (uint32_t)output_shape.Dims(2),
+                                 (uint32_t)output_shape.Dims(3)};
   nn_window_params_t pooling_window = {
       {(uint32_t)op->params.pool_h, (uint32_t)op->params.pool_w},
       {0, 0},
@@ -230,14 +237,14 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   // create tasks
   for (int i_rg = 0; i_rg < op->execution_plan.regions.GetSize(); i_rg++) {
     const RowColRegion& region = op->execution_plan.regions[i_rg];
-    thread_data[i_rg].data.Y = (nn_image_t*)output->data.int8;
-    thread_data[i_rg].data.X = (const nn_image_t*)input->data.int8;
+    thread_data[i_rg].data.Y = tflite::micro::GetTensorData<nn_image_t>(output);
+    thread_data[i_rg].data.X = tflite::micro::GetTensorData<nn_image_t>(input);
     thread_data[i_rg].params.x_image = &in_image;
     thread_data[i_rg].params.y_image = &out_image;
     thread_data[i_rg].params.window = &pooling_window;
     thread_data[i_rg].params.job = {
         {region.top, region.left, 0},
-        {region.rows, region.cols, output->dims->data[3]}};
+        {region.rows, region.cols, output_shape.Dims(3)}};
     dispatcher->AddTask(reinterpret_cast<void*>(&thread_data[i_rg]));
   }
 
@@ -325,8 +332,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  const TfLiteTensor* input = GetInput(context, node, 0);
-  TfLiteTensor* output = GetOutput(context, node, 0);
+  const TfLiteEvalTensor* input = tflite::micro::GetEvalInput(context, node, 0);
+  TfLiteEvalTensor* output = tflite::micro::GetEvalOutput(context, node, 0);
+
+  const RuntimeShape input_shape = tflite::micro::GetTensorShape(input);
 
   AvgPoolGlobalOpData* op =
       reinterpret_cast<AvgPoolGlobalOpData*>(node->user_data);
@@ -345,15 +354,15 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   AvgPoolGlobalThreadData thread_data[n_th];
 
   // setup params common to all thread workers
-  nn_image_params_t in_image = {(uint32_t)input->dims->data[1],
-                                (uint32_t)input->dims->data[2],
-                                (uint32_t)input->dims->data[3]};
+  nn_image_params_t in_image = {(uint32_t)input_shape.Dims(1),
+                                (uint32_t)input_shape.Dims(2),
+                                (uint32_t)input_shape.Dims(3)};
 
   // create tasks
   for (int i_cg = 0; i_cg < op->execution_plan.changrps.GetSize(); i_cg++) {
     const ChannelGroup& changrp = op->execution_plan.changrps[i_cg];
-    thread_data[i_th].data.Y = output->data.int8;
-    thread_data[i_th].data.X = input->data.int8;
+    thread_data[i_th].data.Y = tflite::micro::GetTensorData<int8_t>(output);
+    thread_data[i_th].data.X = tflite::micro::GetTensorData<int8_t>(input);
     thread_data[i_th].bias = op->bias;
     thread_data[i_th].shift = op->shift;
     thread_data[i_th].scale = op->scale;
