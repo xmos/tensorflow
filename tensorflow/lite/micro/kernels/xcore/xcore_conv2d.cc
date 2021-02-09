@@ -162,7 +162,7 @@ TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
   // allocate the stack for thread workers
   Conv2DKernel<kernel_type>::calculate_worker_stack_size(op_data->stack_size);
   TF_LITE_ENSURE_STATUS(context->RequestScratchBufferInArena(
-      context, op_data->stack_size * op_data->execution_plan.regions.GetSize(),
+      context, op_data->stack_size * op_data->execution_plan.regions.size(),
       &op_data->stack_scratch_index));
 
   if (kernel_type != Conv2DKernelType::ONE_BY_ONE) {
@@ -246,7 +246,7 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
     TFLITE_DCHECK(tBSO != nullptr);
   }
 
-  for (int i_cg = 0; i_cg < op->execution_plan.changrps.GetSize(); i_cg++) {
+  for (int i_cg = 0; i_cg < op->execution_plan.changrps.size(); i_cg++) {
     const ChannelGroup &changrp = op->execution_plan.changrps[i_cg];
 
     // fetch the weights and biases
@@ -263,7 +263,7 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
     biases_src_offset += bso_changrp_bytes;
 
     // create tasks
-    for (int i_rg = 0; i_rg < op->execution_plan.regions.GetSize(); i_rg++) {
+    for (int i_rg = 0; i_rg < op->execution_plan.regions.size(); i_rg++) {
       const RowColRegion &region = op->execution_plan.regions[i_rg];
 
       thread_data[i_rg].Y = tflite::micro::GetTensorData<nn_image_t>(output);
@@ -351,7 +351,7 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
   }
 
   // create tasks
-  for (int i_cg = 0; i_cg < op->execution_plan.changrps.GetSize(); i_cg++) {
+  for (int i_cg = 0; i_cg < op->execution_plan.changrps.size(); i_cg++) {
     const ChannelGroup &changrp = op->execution_plan.changrps[i_cg];
 
     // fetch the weights and biases
@@ -367,7 +367,7 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
         bso_changrp_bytes);
     biases_src_offset += bso_changrp_bytes;
 
-    for (int i_rg = 0; i_rg < op->execution_plan.regions.GetSize(); i_rg++) {
+    for (int i_rg = 0; i_rg < op->execution_plan.regions.size(); i_rg++) {
       const RowColRegion &region = op->execution_plan.regions[i_rg];
 
       thread_data[i_rg].Y = tflite::micro::GetTensorData<nn_image_t>(output);
@@ -448,7 +448,7 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
     TFLITE_DCHECK(tBSO != nullptr);
   }
 
-  for (int i_cg = 0; i_cg < op->execution_plan.changrps.GetSize(); i_cg++) {
+  for (int i_cg = 0; i_cg < op->execution_plan.changrps.size(); i_cg++) {
     const ChannelGroup &changrp = op->execution_plan.changrps[i_cg];
 
     // fetch the weights and biases
@@ -463,7 +463,7 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
         bso_changrp_bytes);
     biases_src_offset += bso_changrp_bytes;
 
-    for (int i_rg = 0; i_rg < op->execution_plan.regions.GetSize(); i_rg++) {
+    for (int i_rg = 0; i_rg < op->execution_plan.regions.size(); i_rg++) {
       const RowColRegion &region = op->execution_plan.regions[i_rg];
 
       thread_data[i_rg].Y = tflite::micro::GetTensorData<nn_image_t>(output);
@@ -570,7 +570,7 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
     TFLITE_DCHECK(tBSO != nullptr);
   }
 
-  for (int i_cg = 0; i_cg < op->execution_plan.changrps.GetSize(); i_cg++) {
+  for (int i_cg = 0; i_cg < op->execution_plan.changrps.size(); i_cg++) {
     const ChannelGroup &changrp = op->execution_plan.changrps[i_cg];
 
     if (op->weights_scratch_index >= 0) {
@@ -596,7 +596,7 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
       tBSO = const_cast<int16_t *>(tflite::micro::GetTensorData<int16_t>(bso));
     }
 
-    for (int i_rg = 0; i_rg < op->execution_plan.regions.GetSize(); i_rg++) {
+    for (int i_rg = 0; i_rg < op->execution_plan.regions.size(); i_rg++) {
       const RowColRegion &region = op->execution_plan.regions[i_rg];
 
       thread_data[i_rg].Y = tflite::micro::GetTensorData<nn_image_t>(output);

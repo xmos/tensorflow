@@ -20,6 +20,14 @@ T unpack(const uint8_t *buffer) {
   return retval;
 }
 
+static inline bool is_ram_address(uintptr_t a) {
+#ifdef XCORE
+  return ((a >= 0x80000) && (a <= 0x100000));
+#else
+  return true;
+#endif
+}
+
 static inline TfLiteStatus request_scratch_if_needed(TfLiteContext *context,
                                                      const TfLiteTensor *tensor,
                                                      int &scratch_idx) {
@@ -33,15 +41,14 @@ static inline TfLiteStatus request_scratch_if_needed(TfLiteContext *context,
 template <typename T>
 class PersistentArray {
  private:
-  int32_t max_size_;
-  int32_t size_;
-  T *data_;
+  size_t max_size_ = 0;
+  size_t size_ = 0;
+  T *data_ = nullptr;
 
  public:
-  PersistentArray() : size_(0), max_size_(0), data_(nullptr) {}
   void allocate(TfLiteContext *context, size_t max_size) {
     assert(data_ == nullptr);
-    assert(max_size_ > 0);
+    assert(max_size > 0);
 
     max_size_ = max_size;
     data_ = reinterpret_cast<T *>(
@@ -59,8 +66,8 @@ class PersistentArray {
     assert(size_ < max_size_);
     data_[size_++] = std::move(element);
   }
-  inline size_t size() noexcept;
-  inline size_t max_size() noexcept;
+  inline size_t size() noexcept { return size_; }
+  inline size_t max_size() noexcept { return max_size_; }
 };
 
 #ifndef UNSUPPORTED_KERNEL_TYPE

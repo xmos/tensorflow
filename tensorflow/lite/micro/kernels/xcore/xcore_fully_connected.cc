@@ -141,7 +141,7 @@ TfLiteStatus Eval_8(TfLiteContext* context, TfLiteNode* node) {
     TFLITE_DCHECK(sBSO != nullptr);
   }
 
-  for (int i_cg = 0; i_cg < op->execution_plan.changrps.GetSize(); i_cg++) {
+  for (int i_cg = 0; i_cg < op->execution_plan.changrps.size(); i_cg++) {
     const ChannelGroup& changrp = op->execution_plan.changrps[i_cg];
 
     // offset into the temp W and BSO pointers based on how many bytes we

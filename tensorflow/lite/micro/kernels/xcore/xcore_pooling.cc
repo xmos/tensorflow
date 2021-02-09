@@ -121,7 +121,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       {op->params.stride_h, op->params.stride_w}};
 
   // create tasks
-  for (int i_rg = 0; i_rg < op->execution_plan.regions.GetSize(); i_rg++) {
+  for (int i_rg = 0; i_rg < op->execution_plan.regions.size(); i_rg++) {
     const RowColRegion& region = op->execution_plan.regions[i_rg];
     thread_data[i_rg].data.Y = tflite::micro::GetTensorData<nn_image_t>(output);
     thread_data[i_rg].data.X = tflite::micro::GetTensorData<nn_image_t>(input);
@@ -235,7 +235,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       {op->params.stride_h, op->params.stride_w}};
 
   // create tasks
-  for (int i_rg = 0; i_rg < op->execution_plan.regions.GetSize(); i_rg++) {
+  for (int i_rg = 0; i_rg < op->execution_plan.regions.size(); i_rg++) {
     const RowColRegion& region = op->execution_plan.regions[i_rg];
     thread_data[i_rg].data.Y = tflite::micro::GetTensorData<nn_image_t>(output);
     thread_data[i_rg].data.X = tflite::micro::GetTensorData<nn_image_t>(input);
@@ -359,7 +359,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                                 (uint32_t)input_shape.Dims(3)};
 
   // create tasks
-  for (int i_cg = 0; i_cg < op->execution_plan.changrps.GetSize(); i_cg++) {
+  for (int i_cg = 0; i_cg < op->execution_plan.changrps.size(); i_cg++) {
     const ChannelGroup& changrp = op->execution_plan.changrps[i_cg];
     thread_data[i_th].data.Y = tflite::micro::GetTensorData<int8_t>(output);
     thread_data[i_th].data.X = tflite::micro::GetTensorData<int8_t>(input);
