@@ -355,8 +355,7 @@ static inline TfLiteStatus fetch_scratch_if_needed(
   return kTfLiteOk;
 }
 
-template <BConv2DKernelType kernel_type>
-TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
+TfLiteStatus EvalCommon(TfLiteContext *context, TfLiteNode *node) {
   auto *op_data = reinterpret_cast<BConv2DOpData *>(node->user_data);
   op_data->args.X = tflite::micro::GetTensorData<bnn_b32_t>(
       tflite::micro::GetEvalInput(context, node, 0));
@@ -364,6 +363,13 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
   TF_LITE_ENSURE_STATUS(fetch_scratch_if_needed(
       context, op_data->args.K, tflite::micro::GetEvalInput(context, node, 1),
       op_data->weights_scratch_idx));
+}
+
+template <BConv2DKernelType kernel_type>
+TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
+  TF_LITE_ENSURE_STATUS(EvalCommon(context, node));
+
+  auto *op_data = reinterpret_cast<BConv2DOpData *>(node->user_data);
 
   if (kernel_type == BConv2DKernelType::BITPACKED ||
       kernel_type == BConv2DKernelType::BITPACKED_DI) {
