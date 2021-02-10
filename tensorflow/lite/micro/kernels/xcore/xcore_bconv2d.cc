@@ -162,37 +162,37 @@ struct BConv2DOpData {
 // -------------------------------------------------------------------- //
 
 enum class BConv2DKernelType {
-  BITPACKED,
-  BITPACKED_DI,
-  INT8,
-  INT8_DIDO,
+  kBitpacked,
+  kBitpackedDeepIn,
+  kInt8,
+  kInt8DeepInDeepOut,
 };
 
 template <BConv2DKernelType kernel_type>
 struct BConv2DKernel {
   static inline const thread_function_t get_worker() {
-    if (kernel_type == BConv2DKernelType::BITPACKED) {
+    if (kernel_type == BConv2DKernelType::kBitpacked) {
       return bconv2d_bitpacked_thread_worker;
-    } else if (kernel_type == BConv2DKernelType::BITPACKED_DI) {
+    } else if (kernel_type == BConv2DKernelType::kBitpackedDeepIn) {
       return bconv2d_bitpacked_deepin_thread_worker;
-    } else if (kernel_type == BConv2DKernelType::INT8) {
+    } else if (kernel_type == BConv2DKernelType::kInt8) {
       return bconv2d_int8_thread_worker;
-    } else if (kernel_type == BConv2DKernelType::INT8_DIDO) {
+    } else if (kernel_type == BConv2DKernelType::kInt8DeepInDeepOut) {
       return bconv2d_int8_deepin_deepout_thread_worker;
     } else {
       UNSUPPORTED_KERNEL_TYPE(BConv2DKernelType);
     }
   };
   static inline void calculate_worker_stack_size(size_t &stack_size) {
-    if (kernel_type == BConv2DKernelType::BITPACKED) {
+    if (kernel_type == BConv2DKernelType::kBitpacked) {
       GET_THREAD_FUNCTION_STACKSIZE(stack_size,
                                     bconv2d_bitpacked_thread_worker);
-    } else if (kernel_type == BConv2DKernelType::BITPACKED_DI) {
+    } else if (kernel_type == BConv2DKernelType::kBitpackedDeepIn) {
       GET_THREAD_FUNCTION_STACKSIZE(stack_size,
                                     bconv2d_bitpacked_deepin_thread_worker);
-    } else if (kernel_type == BConv2DKernelType::INT8) {
+    } else if (kernel_type == BConv2DKernelType::kInt8) {
       GET_THREAD_FUNCTION_STACKSIZE(stack_size, bconv2d_int8_thread_worker);
-    } else if (kernel_type == BConv2DKernelType::INT8_DIDO) {
+    } else if (kernel_type == BConv2DKernelType::kInt8DeepInDeepOut) {
       GET_THREAD_FUNCTION_STACKSIZE(stack_size,
                                     bconv2d_int8_deepin_deepout_thread_worker);
     } else {
@@ -288,22 +288,23 @@ TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
   TF_LITE_ENSURE_STATUS(request_scratch_if_needed(
       context, GetInput(context, node, 1), op_data->weights_scratch_idx));
 
-  if (kernel_type == BConv2DKernelType::BITPACKED ||
-      kernel_type == BConv2DKernelType::BITPACKED_DI) {  // output is bitpacked
+  if (kernel_type == BConv2DKernelType::kBitpacked ||
+      kernel_type ==
+          BConv2DKernelType::kBitpackedDeepIn) {  // output is bitpacked
     TF_LITE_ENSURE_EQ(context, NumInputs(node), 3);
     TF_LITE_ENSURE_STATUS(request_scratch_if_needed(
         context, GetInput(context, node, 2), op_data->threshold_scratch_idx));
-  } else if (kernel_type == BConv2DKernelType::INT8 ||
-             kernel_type == BConv2DKernelType::INT8_DIDO) {
+  } else if (kernel_type == BConv2DKernelType::kInt8 ||
+             kernel_type == BConv2DKernelType::kInt8DeepInDeepOut) {
     TF_LITE_ENSURE_EQ(context, NumInputs(node),
-                      (kernel_type == BConv2DKernelType::INT8) ? 6 : 5);
+                      (kernel_type == BConv2DKernelType::kInt8) ? 6 : 5);
     TF_LITE_ENSURE_STATUS(request_scratch_if_needed(
         context, GetInput(context, node, 2), op_data->multiplier_scratch_idx));
     TF_LITE_ENSURE_STATUS(request_scratch_if_needed(
         context, GetInput(context, node, 3), op_data->bias_scratch_idx));
     TF_LITE_ENSURE_STATUS(request_scratch_if_needed(
         context, GetInput(context, node, 4), op_data->output_trf_scratch_idx));
-    if (kernel_type == BConv2DKernelType::INT8) {
+    if (kernel_type == BConv2DKernelType::kInt8) {
       TF_LITE_ENSURE_STATUS(
           request_scratch_if_needed(context, GetInput(context, node, 5),
                                     op_data->accu_modifier_scratch_idx));
@@ -317,8 +318,8 @@ TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
       context, op_data->stack_size * op_data->n_threads,
       &op_data->stack_scratch_index));
 
-  if (kernel_type == BConv2DKernelType::BITPACKED ||
-      kernel_type == BConv2DKernelType::INT8) {
+  if (kernel_type == BConv2DKernelType::kBitpacked ||
+      kernel_type == BConv2DKernelType::kInt8) {
     int thread_scratch_size =
         4 * (op_data->args.k.shape.height * op_data->args.k.shape.width *
                  op_data->args.x.channels / XS1_ALL_BITS_SIZE +
@@ -371,16 +372,16 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
 
   auto *op_data = reinterpret_cast<BConv2DOpData *>(node->user_data);
 
-  if (kernel_type == BConv2DKernelType::BITPACKED ||
-      kernel_type == BConv2DKernelType::BITPACKED_DI) {
+  if (kernel_type == BConv2DKernelType::kBitpacked ||
+      kernel_type == BConv2DKernelType::kBitpackedDeepIn) {
     op_data->args.Y_bitpacked = tflite::micro::GetTensorData<bnn_b32_t>(
         tflite::micro::GetEvalOutput(context, node, 0));
     TF_LITE_ENSURE_STATUS(
         fetch_scratch_if_needed(context, op_data->args.thresholds,
                                 tflite::micro::GetEvalInput(context, node, 2),
                                 op_data->threshold_scratch_idx));
-  } else if (kernel_type == BConv2DKernelType::INT8 ||
-             kernel_type == BConv2DKernelType::INT8_DIDO) {
+  } else if (kernel_type == BConv2DKernelType::kInt8 ||
+             kernel_type == BConv2DKernelType::kInt8DeepInDeepOut) {
     op_data->args.Y_int8 = tflite::micro::GetTensorData<int8_t>(
         tflite::micro::GetEvalOutput(context, node, 0));
 
@@ -396,7 +397,7 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
         fetch_scratch_if_needed(context, op_data->args.output_trf_parameters,
                                 tflite::micro::GetEvalInput(context, node, 4),
                                 op_data->output_trf_scratch_idx));
-    if (kernel_type == BConv2DKernelType::INT8) {
+    if (kernel_type == BConv2DKernelType::kInt8) {
       TF_LITE_ENSURE_STATUS(
           fetch_scratch_if_needed(context, op_data->args.accu_modifier,
                                   tflite::micro::GetEvalInput(context, node, 5),
@@ -418,8 +419,8 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
   // add tasks
   for (int thread_idx = 0; thread_idx < op_data->n_threads; thread_idx++) {
     auto &thread = op_data->threads[thread_idx];
-    if (kernel_type == BConv2DKernelType::BITPACKED ||
-        kernel_type == BConv2DKernelType::INT8) {
+    if (kernel_type == BConv2DKernelType::kBitpacked ||
+        kernel_type == BConv2DKernelType::kInt8) {
       thread.thread_scratch = static_cast<bnn_b32_t *>(
           context->GetScratchBuffer(context, thread.thread_scratch_idx));
     }
@@ -437,29 +438,31 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
 TfLiteRegistration *Register_BConv2D_Bitpacked_Deepin() {
   static TfLiteRegistration r = {
       bconv::Init, nullptr,
-      bconv::Prepare<bconv::BConv2DKernelType::BITPACKED_DI>,
-      bconv::Eval<bconv::BConv2DKernelType::BITPACKED_DI>};
+      bconv::Prepare<bconv::BConv2DKernelType::kBitpackedDeepIn>,
+      bconv::Eval<bconv::BConv2DKernelType::kBitpackedDeepIn>};
   return &r;
 }
 
 TfLiteRegistration *Register_BConv2D_Bitpacked() {
   static TfLiteRegistration r = {
-      bconv::Init, nullptr, bconv::Prepare<bconv::BConv2DKernelType::BITPACKED>,
-      bconv::Eval<bconv::BConv2DKernelType::BITPACKED>};
+      bconv::Init, nullptr,
+      bconv::Prepare<bconv::BConv2DKernelType::kBitpacked>,
+      bconv::Eval<bconv::BConv2DKernelType::kBitpacked>};
   return &r;
 }
 
 TfLiteRegistration *Register_BConv2D_Int8_Deepin_Deepout() {
   static TfLiteRegistration r = {
-      bconv::Init, nullptr, bconv::Prepare<bconv::BConv2DKernelType::INT8_DIDO>,
-      bconv::Eval<bconv::BConv2DKernelType::INT8_DIDO>};
+      bconv::Init, nullptr,
+      bconv::Prepare<bconv::BConv2DKernelType::kInt8DeepInDeepOut>,
+      bconv::Eval<bconv::BConv2DKernelType::kInt8DeepInDeepOut>};
   return &r;
 }
 
 TfLiteRegistration *Register_BConv2D_Int8() {
-  static TfLiteRegistration r = {bconv::Init, nullptr,
-                                 bconv::Prepare<bconv::BConv2DKernelType::INT8>,
-                                 bconv::Eval<bconv::BConv2DKernelType::INT8>};
+  static TfLiteRegistration r = {
+      bconv::Init, nullptr, bconv::Prepare<bconv::BConv2DKernelType::kInt8>,
+      bconv::Eval<bconv::BConv2DKernelType::kInt8>};
   return &r;
 }
 

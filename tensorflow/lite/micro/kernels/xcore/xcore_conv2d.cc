@@ -94,35 +94,35 @@ ATTRIBUTE_THREAD_FUNCTION void conv2d_depthwise_thread_worker(void *context) {
 // -------------------------------------------------------------------- //
 
 enum class Conv2DKernelType {
-  DEEP,
-  SHALLOW,
-  ONE_BY_ONE,
-  DEPTHWISE,
+  kDeep,
+  kShallow,
+  kOneByOne,
+  kDepthwise,
 };
 
 template <Conv2DKernelType kernel_type>
 struct Conv2DKernel {
   static inline const thread_function_t get_worker() {
-    if (kernel_type == Conv2DKernelType::DEEP) {
+    if (kernel_type == Conv2DKernelType::kDeep) {
       return conv2d_deep_thread_worker;
-    } else if (kernel_type == Conv2DKernelType::SHALLOW) {
+    } else if (kernel_type == Conv2DKernelType::kShallow) {
       return conv2d_shallow_thread_worker;
-    } else if (kernel_type == Conv2DKernelType::ONE_BY_ONE) {
+    } else if (kernel_type == Conv2DKernelType::kOneByOne) {
       return conv2d_1x1_thread_worker;
-    } else if (kernel_type == Conv2DKernelType::DEPTHWISE) {
+    } else if (kernel_type == Conv2DKernelType::kDepthwise) {
       return conv2d_depthwise_thread_worker;
     } else {
       UNSUPPORTED_KERNEL_TYPE(Conv2DKernelType);
     }
   };
   static inline void calculate_worker_stack_size(size_t &stack_size) {
-    if (kernel_type == Conv2DKernelType::DEEP) {
+    if (kernel_type == Conv2DKernelType::kDeep) {
       GET_THREAD_FUNCTION_STACKSIZE(stack_size, conv2d_deep_thread_worker);
-    } else if (kernel_type == Conv2DKernelType::SHALLOW) {
+    } else if (kernel_type == Conv2DKernelType::kShallow) {
       GET_THREAD_FUNCTION_STACKSIZE(stack_size, conv2d_shallow_thread_worker);
-    } else if (kernel_type == Conv2DKernelType::ONE_BY_ONE) {
+    } else if (kernel_type == Conv2DKernelType::kOneByOne) {
       GET_THREAD_FUNCTION_STACKSIZE(stack_size, conv2d_1x1_thread_worker);
-    } else if (kernel_type == Conv2DKernelType::DEPTHWISE) {
+    } else if (kernel_type == Conv2DKernelType::kDepthwise) {
       GET_THREAD_FUNCTION_STACKSIZE(stack_size, conv2d_depthwise_thread_worker);
     } else {
       UNSUPPORTED_KERNEL_TYPE(Conv2DKernelType);
@@ -189,15 +189,15 @@ TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
       &op_data->stack_scratch_index));
 
   const auto &weight_shape = GetTensorShape(GetInput(context, node, 1));
-  if (kernel_type == Conv2DKernelType::ONE_BY_ONE) {
+  if (kernel_type == Conv2DKernelType::kOneByOne) {
     op_data->args.window.shape = {1, 1};
-  } else if (kernel_type == Conv2DKernelType::SHALLOW) {
+  } else if (kernel_type == Conv2DKernelType::kShallow) {
     op_data->args.window.shape.height = weight_shape.Dims(1);
     op_data->args.window.shape.width = op_data->params.K_w;
-  } else if (kernel_type == Conv2DKernelType::DEPTHWISE) {
+  } else if (kernel_type == Conv2DKernelType::kDepthwise) {
     op_data->args.window.shape.height = weight_shape.Dims(0);
     op_data->args.window.shape.width = weight_shape.Dims(1);
-  } else if (kernel_type == Conv2DKernelType::DEEP) {
+  } else if (kernel_type == Conv2DKernelType::kDeep) {
     op_data->args.window.shape.height = weight_shape.Dims(1);
     op_data->args.window.shape.width = weight_shape.Dims(2);
   }
@@ -549,28 +549,28 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
 
 TfLiteRegistration *Register_Conv2D_Deep() {
   static TfLiteRegistration r = {conv::Init, nullptr,
-                                 conv::Prepare<conv::Conv2DKernelType::DEEP>,
+                                 conv::Prepare<conv::Conv2DKernelType::kDeep>,
                                  conv::deep::Eval};
   return &r;
 }
 
 TfLiteRegistration *Register_Conv2D_Shallow() {
-  static TfLiteRegistration r = {conv::Init, nullptr,
-                                 conv::Prepare<conv::Conv2DKernelType::SHALLOW>,
-                                 conv::shallow::Eval};
+  static TfLiteRegistration r = {
+      conv::Init, nullptr, conv::Prepare<conv::Conv2DKernelType::kShallow>,
+      conv::shallow::Eval};
   return &r;
 }
 
 TfLiteRegistration *Register_Conv2D_1x1() {
   static TfLiteRegistration r = {
-      conv::Init, nullptr, conv::Prepare<conv::Conv2DKernelType::ONE_BY_ONE>,
+      conv::Init, nullptr, conv::Prepare<conv::Conv2DKernelType::kOneByOne>,
       conv::n1x1::Eval};
   return &r;
 }
 
 TfLiteRegistration *Register_Conv2D_Depthwise() {
   static TfLiteRegistration r = {
-      conv::Init, nullptr, conv::Prepare<conv::Conv2DKernelType::DEPTHWISE>,
+      conv::Init, nullptr, conv::Prepare<conv::Conv2DKernelType::kDepthwise>,
       conv::depthwise::Eval};
   return &r;
 }
