@@ -25,7 +25,9 @@ struct Conv2DArguments {
   nn_image_params_t x_image;
   nn_image_params_t y_image;
 
-  nn_window_params_t window;  // not used by 1x1
+  nn_window_params_t window;                    // not used by 1x1
+  int8_t zero_point;                            // not used by 1x1
+  nn_conv2d_depthwise_flags_e depthwise_flags;  // only for depthwise
 };
 
 struct Conv2DOpData {
@@ -43,10 +45,6 @@ struct Conv2DOpData {
 // -------------------------------------------------------------------- //
 
 struct Conv2DThreadData {
-  // TODO: none of these belong to this struct
-  int8_t zero_point;                  // not used by 1x1
-  nn_conv2d_depthwise_flags_e flags;  // only for depthwise
-
   Conv2DArguments *args;
   nn_window_op_job_params_t job;
 };
@@ -55,7 +53,7 @@ extern "C" {
 ATTRIBUTE_THREAD_FUNCTION void conv2d_shallow_thread_worker(void *context) {
   auto *td = static_cast<Conv2DThreadData *>(context);
   auto *args = td->args;
-  conv2d_shallowin_ext(args->Y, args->X, args->K, args->BSO, td->zero_point,
+  conv2d_shallowin_ext(args->Y, args->X, args->K, args->BSO, args->zero_point,
                        &args->x_image, &args->y_image, &args->window, &td->job,
                        CONV2D_SHALLOWIN_FLAG_SLICED_K);
 }
@@ -64,7 +62,7 @@ ATTRIBUTE_THREAD_FUNCTION void conv2d_deep_thread_worker(void *context) {
   auto *td = static_cast<Conv2DThreadData *>(context);
   auto *args = td->args;
 
-  conv2d_deep_ext(args->Y, args->X, args->K, args->BSO, td->zero_point,
+  conv2d_deep_ext(args->Y, args->X, args->K, args->BSO, args->zero_point,
                   &args->x_image, &args->y_image, &args->window, &td->job,
                   CONV2D_DEEP_FLAG_SLICED_K);
 }
@@ -85,9 +83,9 @@ ATTRIBUTE_THREAD_FUNCTION void conv2d_1x1_thread_worker(void *context) {
 ATTRIBUTE_THREAD_FUNCTION void conv2d_depthwise_thread_worker(void *context) {
   auto *td = static_cast<Conv2DThreadData *>(context);
   auto *args = td->args;
-  conv2d_depthwise_ext(args->Y, args->X, args->K, args->BSO, td->zero_point,
+  conv2d_depthwise_ext(args->Y, args->X, args->K, args->BSO, args->zero_point,
                        &args->x_image, &args->y_image, &args->window, &td->job,
-                       td->flags);
+                       args->depthwise_flags);
 }
 }
 
@@ -173,6 +171,7 @@ TfLiteStatus PrepareCommon(TfLiteContext *context, TfLiteNode *node) {
                                 -op_data->params.pad.left};
   op_data->args.window.stride = {op_data->params.stride_h,
                                  op_data->params.stride_w};
+  op_data->args.zero_point = op_data->params.pad.zero_point;
 
   return kTfLiteOk;
 }
@@ -286,7 +285,6 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
     for (int i_rg = 0; i_rg < op->execution_plan.regions.size(); i_rg++) {
       const RowColRegion &region = op->execution_plan.regions[i_rg];
 
-      thread_data[i_rg].zero_point = op->params.pad.zero_point;
       thread_data[i_rg].job = {{region.top, region.left, changrp.start},
                                {region.rows, region.cols, changrp.size}};
       dispatcher->AddTask(reinterpret_cast<void *>(&thread_data[i_rg]));
@@ -371,7 +369,6 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
     for (int i_rg = 0; i_rg < op->execution_plan.regions.size(); i_rg++) {
       const RowColRegion &region = op->execution_plan.regions[i_rg];
 
-      thread_data[i_rg].zero_point = op->params.pad.zero_point;
       thread_data[i_rg].job = {{region.top, region.left, changrp.start},
                                {region.rows, region.cols, changrp.size}};
       dispatcher->AddTask(reinterpret_cast<void *>(&thread_data[i_rg]));
@@ -528,8 +525,10 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
 
   // load weights & bias scratch buffers (if necessary)
   size_t biases_src_offset = 0;
-  nn_conv2d_depthwise_flags_e flags = (nn_conv2d_depthwise_flags_e)0;
 
+  op->args.depthwise_flags = (op->weights_scratch_index >= 0)
+                                 ? CONV2D_DEPTHWISE_FLAG_SLICED_K
+                                 : (nn_conv2d_depthwise_flags_e)0;
   if (op->weights_scratch_index >= 0) {
     op->args.K = static_cast<nn_tensor_t *>(
         context->GetScratchBuffer(context, op->weights_scratch_index));
@@ -550,13 +549,12 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
           (int8_t *)op->args.K, tflite::micro::GetTensorData<int8_t>(weights),
           op->args.window.shape.height, op->args.window.shape.width,
           weights_shape.Dims(2), changrp.start, changrp.size);
-      flags = CONV2D_DEPTHWISE_FLAG_SLICED_K;
     } else {
       // use entire tensor
       op->args.K = tflite::micro::GetTensorData<nn_tensor_t>(weights);
     }
 
-    if (op->weights_scratch_index >= 0) {
+    if (op->bias_scratch_index >= 0) {
       // fetch the biases
       dispatcher->FetchBuffer(
           (int8_t **)&op->args.BSO,
@@ -571,10 +569,8 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
     for (int i_rg = 0; i_rg < op->execution_plan.regions.size(); i_rg++) {
       const RowColRegion &region = op->execution_plan.regions[i_rg];
 
-      thread_data[i_rg].zero_point = op->params.pad.zero_point;
       thread_data[i_rg].job = {{region.top, region.left, changrp.start},
                                {region.rows, region.cols, changrp.size}};
-      thread_data[i_rg].flags = flags;
       dispatcher->AddTask(reinterpret_cast<void *>(&thread_data[i_rg]));
     }
     // start and wait for tasks to complete
