@@ -280,8 +280,8 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
     dispatcher->FetchBuffer(
         (int8_t **)&op->args.BSO,
         &tflite::micro::GetTensorData<int8_t>(bso)[biases_src_offset],
-        bso_changrp_bytes);
-    biases_src_offset += bso_changrp_bytes;
+        kBSOChannelGroupBytes);
+    biases_src_offset += kBSOChannelGroupBytes;
 
     for (int i_rg = 0; i_rg < op->execution_plan.regions.size(); i_rg++) {
       const RowColRegion &region = op->execution_plan.regions[i_rg];
@@ -351,8 +351,8 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
     dispatcher->FetchBuffer(
         (int8_t **)&op->args.BSO,
         &tflite::micro::GetTensorData<int8_t>(bso)[biases_src_offset],
-        bso_changrp_bytes);
-    biases_src_offset += bso_changrp_bytes;
+        kBSOChannelGroupBytes);
+    biases_src_offset += kBSOChannelGroupBytes;
 
     for (int i_rg = 0; i_rg < op->execution_plan.regions.size(); i_rg++) {
       const RowColRegion &region = op->execution_plan.regions[i_rg];
@@ -421,8 +421,8 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
     dispatcher->FetchBuffer(
         (int8_t **)&op->args.BSO,
         &tflite::micro::GetTensorData<int8_t>(bso)[biases_src_offset],
-        bso_changrp_bytes);
-    biases_src_offset += bso_changrp_bytes;
+        kBSOChannelGroupBytes);
+    biases_src_offset += kBSOChannelGroupBytes;
 
     for (int i_rg = 0; i_rg < op->execution_plan.regions.size(); i_rg++) {
       const RowColRegion &region = op->execution_plan.regions[i_rg];
@@ -524,8 +524,8 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
       dispatcher->FetchBuffer(
           (int8_t **)&op->args.BSO,
           &tflite::micro::GetTensorData<int8_t>(bso)[biases_src_offset],
-          bso_changrp_bytes);
-      biases_src_offset += bso_changrp_bytes;
+          kBSOChannelGroupBytes);
+      biases_src_offset += kBSOChannelGroupBytes;
     } else {
       // use entire tensor
       op->args.BSO = tflite::micro::GetTensorData<nn_bso_block_t>(bso);

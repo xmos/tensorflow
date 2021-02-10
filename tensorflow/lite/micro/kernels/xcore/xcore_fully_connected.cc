@@ -160,9 +160,9 @@ TfLiteStatus Eval_8(TfLiteContext* context, TfLiteNode* node) {
     dispatcher->FetchBuffer(
         (int8_t**)&tBSO,
         &tflite::micro::GetTensorData<int8_t>(bso)[biases_src_offset],
-        bso_changrp_bytes);
-    biases_dest_offset += bso_changrp_bytes;
-    biases_src_offset += bso_changrp_bytes;
+        kBSOChannelGroupBytes);
+    biases_dest_offset += kBSOChannelGroupBytes;
+    biases_src_offset += kBSOChannelGroupBytes;
 
     thread_data[i_th].Y =
         &tflite::micro::GetTensorData<int8_t>(output)[changrp.start];

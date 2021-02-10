@@ -13,9 +13,9 @@ namespace ops {
 namespace micro {
 namespace xcore {
 
-constexpr size_t changrp_len = (16);
-constexpr size_t bso_changrp_len = (7 * changrp_len);
-constexpr size_t bso_changrp_bytes = (bso_changrp_len * 2);
+constexpr size_t kChannelGroupLength = (16);
+constexpr size_t kBSOChannelGroupLength = (7 * kChannelGroupLength);
+constexpr size_t kBSOChannelGroupBytes = (kBSOChannelGroupLength * 2);
 
 typedef struct RowColRegion {
   int32_t top;
