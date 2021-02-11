@@ -14,11 +14,70 @@ namespace xcore {
  *      int32_t t1 = unpack<int32_t>(&my_buffer[27]);
  */
 template <class T>
-T unpack(const uint8_t* buffer) {
+T unpack(const uint8_t *buffer) {
   T retval = 0;
   for (int i = 0; i < sizeof(T); ++i) retval |= buffer[i] << (8 * i);
   return retval;
 }
+
+template <typename T>
+static inline T *intialize_persistent_buffer(TfLiteContext *context) {
+  return new (context->AllocatePersistentBuffer(context, sizeof(T))) T;
+}
+
+static inline bool is_ram_address(uintptr_t a) {
+#ifdef XCORE
+  return ((a >= 0x80000) && (a <= 0x100000));
+#else
+  return true;
+#endif
+}
+
+static inline TfLiteStatus request_scratch_if_needed(TfLiteContext *context,
+                                                     const TfLiteTensor *tensor,
+                                                     int &scratch_idx) {
+  if (!is_ram_address((uintptr_t)tensor->data.data)) {
+    return context->RequestScratchBufferInArena(context, tensor->bytes,
+                                                &scratch_idx);
+  }
+  return kTfLiteOk;
+}
+
+template <typename T>
+class PersistentArray {
+ private:
+  size_t max_size_ = 0;
+  size_t size_ = 0;
+  T *data_ = nullptr;
+
+ public:
+  void allocate(TfLiteContext *context, size_t max_size) {
+    assert(data_ == nullptr);
+    assert(max_size > 0);
+
+    max_size_ = max_size;
+    data_ = reinterpret_cast<T *>(
+        context->AllocatePersistentBuffer(context, sizeof(T) * max_size));
+  }
+  inline T &operator[](int i) noexcept {
+    assert(i < size_);
+    return data_[i];
+  }
+  inline void append(const T &element) noexcept {
+    assert(size_ < max_size_);
+    data_[size_++] = element;
+  }
+  inline void append(T &&element) noexcept {
+    assert(size_ < max_size_);
+    data_[size_++] = std::move(element);
+  }
+  inline size_t size() noexcept { return size_; }
+  inline size_t max_size() noexcept { return max_size_; }
+};
+
+#ifndef UNSUPPORTED_KERNEL_TYPE
+#define UNSUPPORTED_KERNEL_TYPE(T) TF_LITE_FATAL("Unsupported " #T " value")
+#endif /*UNSUPPORTED_KERNEL_TYPE*/
 
 }  // namespace xcore
 }  // namespace micro

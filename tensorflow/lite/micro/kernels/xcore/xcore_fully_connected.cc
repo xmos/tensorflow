@@ -141,7 +141,7 @@ TfLiteStatus Eval_8(TfLiteContext* context, TfLiteNode* node) {
     TFLITE_DCHECK(sBSO != nullptr);
   }
 
-  for (int i_cg = 0; i_cg < op->execution_plan.changrps.GetSize(); i_cg++) {
+  for (int i_cg = 0; i_cg < op->execution_plan.changrps.size(); i_cg++) {
     const ChannelGroup& changrp = op->execution_plan.changrps[i_cg];
 
     // offset into the temp W and BSO pointers based on how many bytes we
@@ -160,9 +160,9 @@ TfLiteStatus Eval_8(TfLiteContext* context, TfLiteNode* node) {
     dispatcher->FetchBuffer(
         (int8_t**)&tBSO,
         &tflite::micro::GetTensorData<int8_t>(bso)[biases_src_offset],
-        bso_changrp_bytes);
-    biases_dest_offset += bso_changrp_bytes;
-    biases_src_offset += bso_changrp_bytes;
+        kBSOChannelGroupBytes);
+    biases_dest_offset += kBSOChannelGroupBytes;
+    biases_src_offset += kBSOChannelGroupBytes;
 
     thread_data[i_th].Y =
         &tflite::micro::GetTensorData<int8_t>(output)[changrp.start];

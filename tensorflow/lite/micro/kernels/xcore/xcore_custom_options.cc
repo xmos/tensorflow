@@ -117,22 +117,22 @@ void parse_custom_options(TfLiteContext *context, const char *buffer,
             plan->SetNumThreads(plan_values[j].AsInt32());
           } else if (plan_key.compare("cg") == 0) {
             const auto &changrps = plan_values[j].AsVector();
-            plan->changrps.Init(context, changrps.size());
+            plan->changrps.allocate(context, changrps.size());
             for (int k = 0; k < changrps.size(); k++) {
               auto changrp =
                   changrps[k].AsVector();  // values represent [start, end]
-              plan->changrps.Append(
+              plan->changrps.append(
                   {k, changrp[0].AsInt32(),
                    changrp[1].AsInt32() - changrp[0].AsInt32() + 1});
             }
           } else if (plan_key.compare("rc") == 0) {
             const auto &regions = plan_values[j].AsVector();
-            plan->regions.Init(context, regions.size());
+            plan->regions.allocate(context, regions.size());
             for (int k = 0; k < regions.size(); k++) {
               auto region =
                   regions[k]
                       .AsVector();  // values represent [top, left, rows, cols]
-              plan->regions.Append({region[0].AsInt32(), region[1].AsInt32(),
+              plan->regions.append({region[0].AsInt32(), region[1].AsInt32(),
                                     region[2].AsInt32(), region[3].AsInt32()});
             }
           }

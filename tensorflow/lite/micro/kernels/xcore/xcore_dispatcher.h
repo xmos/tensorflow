@@ -30,7 +30,7 @@ extern "C" {
   {                                                                      \
     size_t _stack_words;                                                 \
     asm("ldc %[__dest], " STRINGIFY_THREAD_FUNCTION(NAME) ".nstackwords" \
-        : [ __dest ] "=r"(_stack_words));                                \
+        : [__dest] "=r"(_stack_words));                                  \
     DEST = (_stack_words + 2) * 4;                                       \
   }
 
@@ -54,14 +54,6 @@ constexpr size_t kMaxThreads = 5;
 constexpr size_t kBytesPerStackword = 4;
 constexpr size_t kWordAlignment = 4;
 constexpr size_t kDoubleWordAlignment = 8;
-
-static inline bool is_ram_address(uintptr_t a) {
-#ifdef XCORE
-  return ((a >= 0x80000) && (a <= 0x100000));
-#else
-  return true;
-#endif
-}
 
 typedef struct TaskArray {
   ATTRIBUTE_THREAD_FUNCTION thread_function_t function;
