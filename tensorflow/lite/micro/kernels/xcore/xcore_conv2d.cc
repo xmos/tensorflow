@@ -128,6 +128,18 @@ struct Conv2DKernel {
       UNSUPPORTED_KERNEL_TYPE(Conv2DKernelType);
     }
   };
+  static inline size_t calculate_output_channel_size(
+      const tflite::RuntimeShape &weights_shape) {
+    if (kernel_type == Conv2DKernelType::kDeep ||
+        kernel_type == Conv2DKernelType::kShallow) {
+      return weights_shape.Dims(1) * weights_shape.Dims(2) *
+             weights_shape.Dims(3);
+    } else if (kernel_type == Conv2DKernelType::kOneByOne) {
+      return weights_shape.Dims(1);
+    } else {
+      UNSUPPORTED_KERNEL_TYPE(Conv2DKernelType);
+    }
+  };
 };
 
 // -------------------------------------------------------------------- //
@@ -225,66 +237,55 @@ TfLiteStatus EvalCommon(TfLiteContext *context, TfLiteNode *node) {
   return kTfLiteOk;
 }
 
-//**************************************
-//**************************************
-//**************************************
-// Shallow
-//**************************************
-//**************************************
-//**************************************
-namespace shallow {
-
+template <Conv2DKernelType kernel_type>
 TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
   TF_LITE_ENSURE_STATUS(EvalCommon(context, node));
 
-  const TfLiteEvalTensor *weights =
-      tflite::micro::GetEvalInput(context, node, 1);
+  auto *op_data = reinterpret_cast<Conv2DOpData *>(node->user_data);
 
-  const auto weights_shape = tflite::micro::GetTensorShape(weights);
-  const size_t channel_size =
-      weights_shape.Dims(1) * weights_shape.Dims(2) * weights_shape.Dims(3);
+  // initialize the threads
+  auto *stack = static_cast<char *>(
+      context->GetScratchBuffer(context, op_data->stack_scratch_index));
+  TF_LITE_ENSURE(context, stack);
 
-  const TfLiteEvalTensor *bso = tflite::micro::GetEvalInput(context, node, 2);
-
-  Conv2DOpData *op = reinterpret_cast<Conv2DOpData *>(node->user_data);
   Dispatcher *dispatcher = GetDispatcher();
+  dispatcher->InitializeTasks(Conv2DKernel<kernel_type>::get_worker(), stack,
+                              op_data->stack_size);
 
-  // initialize the dispatcher
-  char *stack = static_cast<char *>(
-      context->GetScratchBuffer(context, op->stack_scratch_index));
-  TFLITE_DCHECK(stack != nullptr);
-  dispatcher->InitializeTasks(conv2d_shallow_thread_worker, stack,
-                              op->stack_size);
-
+  // TODO: move this to prepare or init
   // create thread data
-  int n_th = op->execution_plan.GetNumThreads();
+  int n_th = op_data->execution_plan.GetNumThreads();
   Conv2DThreadData thread_data[n_th];
   for (int j{0}; j < n_th; j++) {
-    thread_data[j].args = &op->args;
+    thread_data[j].args = &op_data->args;
   }
 
-  // load weights & bias scratch buffers (if necessary)
+  const auto *weights = tflite::micro::GetEvalInput(context, node, 1);
+  const auto weights_shape = tflite::micro::GetTensorShape(weights);
+  const auto channel_size =
+      Conv2DKernel<kernel_type>::calculate_output_channel_size(weights_shape);
+
+  const auto *weights_src_array = tflite::micro::GetTensorData<int8_t>(weights);
+  const auto *bso_src_array = tflite::micro::GetTensorData<int8_t>(
+      tflite::micro::GetEvalInput(context, node, 2));
+
   size_t weights_src_offset = 0;
   size_t biases_src_offset = 0;
+  for (int i_cg = 0; i_cg < op_data->execution_plan.changrps.size(); i_cg++) {
+    const auto &changrp = op_data->execution_plan.changrps[i_cg];
 
-  for (int i_cg = 0; i_cg < op->execution_plan.changrps.size(); i_cg++) {
-    const ChannelGroup &changrp = op->execution_plan.changrps[i_cg];
-
-    // fetch the weights and biases
-    size_t weights_fetch_size = channel_size * changrp.size;
-    dispatcher->FetchBuffer(
-        (int8_t **)&op->args.K,
-        &tflite::micro::GetTensorData<int8_t>(weights)[weights_src_offset],
-        weights_fetch_size);
+        size_t weights_fetch_size = channel_size * changrp.size;
+    dispatcher->FetchBuffer((int8_t **)&op_data->args.K,
+                            &weights_src_array[weights_src_offset],
+                            weights_fetch_size);
     weights_src_offset += weights_fetch_size;
-    dispatcher->FetchBuffer(
-        (int8_t **)&op->args.BSO,
-        &tflite::micro::GetTensorData<int8_t>(bso)[biases_src_offset],
-        kBSOChannelGroupBytes);
+    dispatcher->FetchBuffer((int8_t **)&op_data->args.BSO,
+                            &bso_src_array[biases_src_offset],
+                            kBSOChannelGroupBytes);
     biases_src_offset += kBSOChannelGroupBytes;
 
-    for (int i_rg = 0; i_rg < op->execution_plan.regions.size(); i_rg++) {
-      const RowColRegion &region = op->execution_plan.regions[i_rg];
+    for (int i_rg = 0; i_rg < op_data->execution_plan.regions.size(); i_rg++) {
+      const auto &region = op_data->execution_plan.regions[i_rg];
 
       thread_data[i_rg].job = {{region.top, region.left, changrp.start},
                                {region.rows, region.cols, changrp.size}};
@@ -296,160 +297,7 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
   return kTfLiteOk;
 }
 
-}  // namespace shallow
-
-//**************************************
-//**************************************
-//**************************************
-// Conv2D_Deep
-//**************************************
-//**************************************
-//**************************************
-namespace deep {
-
-TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
-  TF_LITE_ENSURE_STATUS(EvalCommon(context, node));
-
-  const TfLiteEvalTensor *weights =
-      tflite::micro::GetEvalInput(context, node, 1);
-  const TfLiteEvalTensor *bso = tflite::micro::GetEvalInput(context, node, 2);
-
-  const auto weights_shape = tflite::micro::GetTensorShape(weights);
-  const size_t channel_size =
-      weights_shape.Dims(1) * weights_shape.Dims(2) * weights_shape.Dims(3);
-
-  Conv2DOpData *op = reinterpret_cast<Conv2DOpData *>(node->user_data);
-  Dispatcher *dispatcher = GetDispatcher();
-
-  // initialize the dispatcher
-  char *stack = static_cast<char *>(
-      context->GetScratchBuffer(context, op->stack_scratch_index));
-  TFLITE_DCHECK(stack != nullptr);
-  dispatcher->InitializeTasks(conv2d_deep_thread_worker, stack, op->stack_size);
-
-  // create thread data
-  int n_th = op->execution_plan.GetNumThreads();
-  Conv2DThreadData thread_data[n_th];
-  for (int j{0}; j < n_th; j++) {
-    thread_data[j].args = &op->args;
-  }
-
-  // load weights & bias scratch buffers (if necessary)
-  size_t weights_src_offset = 0;
-  size_t biases_src_offset = 0;
-
-  for (int i_cg = 0; i_cg < op->execution_plan.changrps.size(); i_cg++) {
-    const ChannelGroup &changrp = op->execution_plan.changrps[i_cg];
-
-    // fetch the weights and biases
-    size_t weights_fetch_size = channel_size * changrp.size;
-    dispatcher->FetchBuffer(
-        (int8_t **)&op->args.K,
-        &tflite::micro::GetTensorData<int8_t>(weights)[weights_src_offset],
-        weights_fetch_size);
-    weights_src_offset += weights_fetch_size;
-    dispatcher->FetchBuffer(
-        (int8_t **)&op->args.BSO,
-        &tflite::micro::GetTensorData<int8_t>(bso)[biases_src_offset],
-        kBSOChannelGroupBytes);
-    biases_src_offset += kBSOChannelGroupBytes;
-
-    for (int i_rg = 0; i_rg < op->execution_plan.regions.size(); i_rg++) {
-      const RowColRegion &region = op->execution_plan.regions[i_rg];
-
-      thread_data[i_rg].job = {{region.top, region.left, changrp.start},
-                               {region.rows, region.cols, changrp.size}};
-      dispatcher->AddTask(reinterpret_cast<void *>(&thread_data[i_rg]));
-    }
-    dispatcher->JoinTasks();
-  }
-
-  return kTfLiteOk;
-}
-
-}  // namespace deep
-
-//**************************************
-//**************************************
-//**************************************
-// 1x1
-//**************************************
-//**************************************
-//**************************************
-namespace n1x1 {
-
-TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
-  TF_LITE_ENSURE_STATUS(EvalCommon(context, node));
-
-  const TfLiteEvalTensor *weights =
-      tflite::micro::GetEvalInput(context, node, 1);
-  const TfLiteEvalTensor *bso = tflite::micro::GetEvalInput(context, node, 2);
-
-  const auto weights_shape = tflite::micro::GetTensorShape(weights);
-  const size_t channel_size = weights_shape.Dims(1);
-
-  Conv2DOpData *op = reinterpret_cast<Conv2DOpData *>(node->user_data);
-  Dispatcher *dispatcher = GetDispatcher();
-
-  // initialize the dispatcher
-  char *stack = static_cast<char *>(
-      context->GetScratchBuffer(context, op->stack_scratch_index));
-  TFLITE_DCHECK(stack != nullptr);
-  dispatcher->InitializeTasks(conv2d_1x1_thread_worker, stack, op->stack_size);
-
-  // create thread data
-  int n_th = op->execution_plan.GetNumThreads();
-  Conv2DThreadData thread_data[n_th];
-  for (int j{0}; j < n_th; j++) {
-    thread_data[j].args = &op->args;
-  }
-
-  // load weights & bias scratch buffers (if necessary)
-  size_t weights_src_offset = 0;
-  size_t biases_src_offset = 0;
-
-  for (int i_cg = 0; i_cg < op->execution_plan.changrps.size(); i_cg++) {
-    const ChannelGroup &changrp = op->execution_plan.changrps[i_cg];
-
-    // fetch the weights and biases
-    size_t weights_fetch_size = channel_size * changrp.size;
-    dispatcher->FetchBuffer(
-        (int8_t **)&op->args.K,
-        &tflite::micro::GetTensorData<int8_t>(weights)[weights_src_offset],
-        weights_fetch_size);
-    weights_src_offset += weights_fetch_size;
-    dispatcher->FetchBuffer(
-        (int8_t **)&op->args.BSO,
-        &tflite::micro::GetTensorData<int8_t>(bso)[biases_src_offset],
-        kBSOChannelGroupBytes);
-    biases_src_offset += kBSOChannelGroupBytes;
-
-    for (int i_rg = 0; i_rg < op->execution_plan.regions.size(); i_rg++) {
-      const RowColRegion &region = op->execution_plan.regions[i_rg];
-
-      thread_data[i_rg].job = {{region.top, region.left, changrp.start},
-                               {region.rows, region.cols, changrp.size}};
-      dispatcher->AddTask(reinterpret_cast<void *>(&thread_data[i_rg]));
-    }
-    dispatcher->JoinTasks();
-  }
-
-  return kTfLiteOk;
-}
-
-}  // namespace n1x1
-
-//**************************************
-//**************************************
-//**************************************
-// depthwise
-//**************************************
-//**************************************
-//**************************************
-
-namespace depthwise {
-
-static void fetch_depthwise_subtensor(int8_t *dest, const int8_t *weights,
+static void fetch_depthwise_subtensor(int8_t *dest, const nn_tensor_t *weights,
                                       const unsigned K_h, const unsigned K_w,
                                       const unsigned X_c,
                                       const unsigned start_channel,
@@ -471,16 +319,21 @@ static void fetch_depthwise_subtensor(int8_t *dest, const int8_t *weights,
   }
 }
 
-TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
+template <>
+TfLiteStatus Eval<Conv2DKernelType::kDepthwise>(TfLiteContext *context,
+                                                TfLiteNode *node) {
   TF_LITE_ENSURE_STATUS(EvalCommon(context, node));
 
   auto *op = reinterpret_cast<Conv2DOpData *>(node->user_data);
 
   const TfLiteEvalTensor *weights =
       tflite::micro::GetEvalInput(context, node, 1);
-  const TfLiteEvalTensor *bso = tflite::micro::GetEvalInput(context, node, 2);
 
   const RuntimeShape weights_shape = tflite::micro::GetTensorShape(weights);
+
+  const auto *weights_src_array = tflite::micro::GetTensorData<int8_t>(weights);
+  const auto *bso_src_array = tflite::micro::GetTensorData<int8_t>(
+      tflite::micro::GetEvalInput(context, node, 2));
 
   Dispatcher *dispatcher = GetDispatcher();
 
@@ -511,24 +364,23 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
     if (op->weights_scratch_index >= 0) {
       // fetch the weights
       fetch_depthwise_subtensor(
-          (int8_t *)op->args.K, tflite::micro::GetTensorData<int8_t>(weights),
-          op->args.window.shape.height, op->args.window.shape.width,
-          weights_shape.Dims(2), changrp.start, changrp.size);
+          (int8_t *)op->args.K, weights_src_array, op->args.window.shape.height,
+          op->args.window.shape.width, weights_shape.Dims(2), changrp.start,
+          changrp.size);
     } else {
       // use entire tensor
-      op->args.K = tflite::micro::GetTensorData<nn_tensor_t>(weights);
+      op->args.K = weights_src_array;
     }
 
     if (op->bias_scratch_index >= 0) {
       // fetch the biases
-      dispatcher->FetchBuffer(
-          (int8_t **)&op->args.BSO,
-          &tflite::micro::GetTensorData<int8_t>(bso)[biases_src_offset],
-          kBSOChannelGroupBytes);
+      dispatcher->FetchBuffer((int8_t **)&op->args.BSO,
+                              &bso_src_array[biases_src_offset],
+                              kBSOChannelGroupBytes);
       biases_src_offset += kBSOChannelGroupBytes;
     } else {
       // use entire tensor
-      op->args.BSO = tflite::micro::GetTensorData<nn_bso_block_t>(bso);
+      op->args.BSO = (const nn_bso_block_t *)bso_src_array;
     }
 
     for (int i_rg = 0; i_rg < op->execution_plan.regions.size(); i_rg++) {
@@ -544,34 +396,33 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
   return kTfLiteOk;
 }
 
-}  // namespace depthwise
 }  // namespace conv
 
 TfLiteRegistration *Register_Conv2D_Deep() {
   static TfLiteRegistration r = {conv::Init, nullptr,
                                  conv::Prepare<conv::Conv2DKernelType::kDeep>,
-                                 conv::deep::Eval};
+                                 conv::Eval<conv::Conv2DKernelType::kDeep>};
   return &r;
 }
 
 TfLiteRegistration *Register_Conv2D_Shallow() {
   static TfLiteRegistration r = {
       conv::Init, nullptr, conv::Prepare<conv::Conv2DKernelType::kShallow>,
-      conv::shallow::Eval};
+      conv::Eval<conv::Conv2DKernelType::kShallow>};
   return &r;
 }
 
 TfLiteRegistration *Register_Conv2D_1x1() {
   static TfLiteRegistration r = {
       conv::Init, nullptr, conv::Prepare<conv::Conv2DKernelType::kOneByOne>,
-      conv::n1x1::Eval};
+      conv::Eval<conv::Conv2DKernelType::kOneByOne>};
   return &r;
 }
 
 TfLiteRegistration *Register_Conv2D_Depthwise() {
   static TfLiteRegistration r = {
       conv::Init, nullptr, conv::Prepare<conv::Conv2DKernelType::kDepthwise>,
-      conv::depthwise::Eval};
+      conv::Eval<conv::Conv2DKernelType::kDepthwise>};
   return &r;
 }
 

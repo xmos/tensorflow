@@ -408,7 +408,7 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
   }
 
   // initialize the threads
-  char *stack = static_cast<char *>(
+  auto *stack = static_cast<char *>(
       context->GetScratchBuffer(context, op_data->stack_scratch_index));
   TF_LITE_ENSURE(context, stack);
 
