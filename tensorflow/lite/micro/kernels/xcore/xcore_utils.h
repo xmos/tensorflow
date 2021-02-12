@@ -1,10 +1,27 @@
 #ifndef XCORE_UTILS_H_
 #define XCORE_UTILS_H_
 
+#include <cassert>
+#include <cstdint>
+#include <utility>
+
+#include "tensorflow/lite/c/common.h"
+
 namespace tflite {
 namespace ops {
 namespace micro {
 namespace xcore {
+
+/* Get size (in bytes) given a TfLiteType enum
+ *  This is useful because a tensor's type field is a TfLiteType
+ *
+ *  Returns kTfLiteError if the type is not supported
+ *  
+ *  NOTE: This is cribbed from tensorflow/lite/util.h because TFLu does not fully 
+ *        support the methods defined in tensorflow/lite/util.h
+ */
+TfLiteStatus GetSizeOfType(TfLiteContext* context, const TfLiteType type,
+                           size_t* bytes);
 
 /* Unpack an integer data type from a byte array
  *  T  data type to unpack

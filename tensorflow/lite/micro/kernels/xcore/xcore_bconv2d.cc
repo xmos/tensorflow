@@ -7,7 +7,6 @@
 #include "tensorflow/lite/micro/kernels/xcore/xcore_custom_options.h"
 #include "tensorflow/lite/micro/kernels/xcore/xcore_dispatcher.h"
 #include "tensorflow/lite/micro/kernels/xcore/xcore_utils.h"
-#include "tensorflow/lite/util.h"
 
 extern "C" {
 #include "lib_nn/api/nn_operator.h"
@@ -364,6 +363,8 @@ TfLiteStatus EvalCommon(TfLiteContext *context, TfLiteNode *node) {
   TF_LITE_ENSURE_STATUS(fetch_scratch_if_needed(
       context, op_data->args.K, tflite::micro::GetEvalInput(context, node, 1),
       op_data->weights_scratch_idx));
+
+  return kTfLiteOk;
 }
 
 template <BConv2DKernelType kernel_type>
