@@ -34,6 +34,7 @@ class CustomOptionParser {
   flexbuffers::Vector values_;
 
  public:
+  CustomOptionParser(const flexbuffers::Map &map);
   CustomOptionParser(const char *buffer, size_t buffer_length);
   flexbuffers::Reference parseNamedCustomOption(const std::string &name) const;
 };
