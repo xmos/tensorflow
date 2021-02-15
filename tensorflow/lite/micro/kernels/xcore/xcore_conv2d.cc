@@ -149,7 +149,7 @@ struct Conv2DKernel {
 // -------------------------------------------------------------------- //
 
 void *Init(TfLiteContext *context, const char *buffer, size_t length) {
-  auto *op_data = intialize_persistent_buffer<Conv2DOpData>(context);
+  auto *op_data = construct_persistent_object<Conv2DOpData>(context);
 
   // parse custom options
   TFLITE_DCHECK(buffer != nullptr);

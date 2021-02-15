@@ -38,7 +38,7 @@ T unpack(const uint8_t *buffer) {
 }
 
 template <typename T>
-static inline T *intialize_persistent_buffer(TfLiteContext *context) {
+static inline T *construct_persistent_object(TfLiteContext *context) {
   return new (context->AllocatePersistentBuffer(context, sizeof(T))) T;
 }
 

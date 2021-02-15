@@ -205,7 +205,7 @@ struct BConv2DKernel {
 // -------------------------------------------------------------------- //
 
 void *Init(TfLiteContext *context, const char *buffer, size_t length) {
-  auto *op_data = intialize_persistent_buffer<BConv2DOpData>(context);
+  auto *op_data = construct_persistent_object<BConv2DOpData>(context);
 
   // parse custom options
   TFLITE_DCHECK(buffer != nullptr);
