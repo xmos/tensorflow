@@ -16,12 +16,12 @@ namespace xcore {
  *  This is useful because a tensor's type field is a TfLiteType
  *
  *  Returns kTfLiteError if the type is not supported
- *  
- *  NOTE: This is cribbed from tensorflow/lite/util.h because TFLu does not fully 
- *        support the methods defined in tensorflow/lite/util.h
+ *
+ *  NOTE: This is cribbed from tensorflow/lite/util.h because TFLu does not
+ * fully support the methods defined in tensorflow/lite/util.h
  */
-TfLiteStatus GetSizeOfType(TfLiteContext* context, const TfLiteType type,
-                           size_t* bytes);
+TfLiteStatus GetSizeOfType(TfLiteContext *context, const TfLiteType type,
+                           size_t *bytes);
 
 /* Unpack an integer data type from a byte array
  *  T  data type to unpack
@@ -38,7 +38,7 @@ T unpack(const uint8_t *buffer) {
 }
 
 template <typename T>
-static inline T *intialize_persistent_buffer(TfLiteContext *context) {
+static inline T *construct_persistent_object(TfLiteContext *context) {
   return new (context->AllocatePersistentBuffer(context, sizeof(T))) T;
 }
 
@@ -68,6 +68,7 @@ class PersistentArray {
   T *data_ = nullptr;
 
  public:
+  // call this only in the Init phase of operators
   void allocate(TfLiteContext *context, size_t max_size) {
     assert(data_ == nullptr);
     assert(max_size > 0);
@@ -75,6 +76,15 @@ class PersistentArray {
     max_size_ = max_size;
     data_ = reinterpret_cast<T *>(
         context->AllocatePersistentBuffer(context, sizeof(T) * max_size));
+  }
+  // TODO: begin and end would be better if returned an iterator object
+  inline T *begin() noexcept {
+    assert(size_ > 0);
+    return &data_[0];
+  }
+  inline T *end() noexcept {
+    assert(size_ > 0);
+    return &data_[size_];
   }
   inline T &operator[](int i) noexcept {
     assert(i < size_);

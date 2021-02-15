@@ -5,14 +5,20 @@ namespace ops {
 namespace micro {
 namespace xcore {
 
-CustomOptionParser::CustomOptionParser(const char *buffer, size_t buffer_length)
+CustomOptionParser::CustomOptionParser(const flexbuffers::Map &map)
     : keys_(flexbuffers::TypedVector::EmptyTypedVector()),
       values_(flexbuffers::Vector::EmptyVector()) {
-  auto map = flexbuffers::GetRoot(reinterpret_cast<const uint8_t *>(buffer),
-                                  buffer_length)
-                 .AsMap();
   keys_ = map.Keys();
   values_ = map.Values();
+}
+
+CustomOptionParser::CustomOptionParser(const char *buffer, size_t buffer_length)
+    : CustomOptionParser::CustomOptionParser(
+          flexbuffers::GetRoot(reinterpret_cast<const uint8_t *>(buffer),
+                               buffer_length)
+              .AsMap()) {
+  assert(buffer != nullptr);
+  assert(buffer_length > 0);
 }
 
 flexbuffers::Reference CustomOptionParser::parseNamedCustomOption(
