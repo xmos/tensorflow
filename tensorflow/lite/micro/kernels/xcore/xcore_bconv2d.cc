@@ -62,41 +62,43 @@ extern "C" {
 ATTRIBUTE_THREAD_FUNCTION void bconv2d_bitpacked_deepin_thread_worker(
     void *context) {
   auto *td = static_cast<BConv2DThreadData *>(context);
+  auto *args = td->args;
   auto *job = td->job;
-  bconv2d_bin_DI_valid(td->args->Y_bitpacked, (const bnn_b256_t *)td->args->X,
-                       (const bnn_b256_t *)td->args->K, td->args->thresholds,
-                       &td->args->x, &td->args->y, &td->args->k, job->left,
-                       job->top, job->cols, job->rows);
+  bconv2d_bin_DI_valid(args->Y_bitpacked, (const bnn_b256_t *)args->X,
+                       (const bnn_b256_t *)args->K, args->thresholds, &args->x,
+                       &args->y, &args->k, job->left, job->top, job->cols,
+                       job->rows);
 }
 
 ATTRIBUTE_THREAD_FUNCTION void bconv2d_bitpacked_thread_worker(void *context) {
   auto *td = static_cast<BConv2DThreadData *>(context);
+  auto *args = td->args;
   auto *job = td->job;
-  bconv2d_bin_valid(td->args->Y_bitpacked, td->args->X, td->args->K,
-                    td->args->thresholds, td->thread_scratch, &td->args->x,
-                    &td->args->y, &td->args->k, job->left, job->top, job->cols,
-                    job->rows);
+  bconv2d_bin_valid(args->Y_bitpacked, args->X, args->K, args->thresholds,
+                    td->thread_scratch, &args->x, &args->y, &args->k, job->left,
+                    job->top, job->cols, job->rows);
 }
 
 ATTRIBUTE_THREAD_FUNCTION void bconv2d_int8_deepin_deepout_thread_worker(
     void *context) {
   auto *td = static_cast<BConv2DThreadData *>(context);
+  auto *args = td->args;
   auto *job = td->job;
   bconv2d_int8_DIDO_valid(
-      td->args->Y_int8, (const bnn_b256_t *)td->args->X,
-      (const bnn_b256_t *)td->args->K, td->args->post_act_mult,
-      td->args->post_act_bias, td->args->output_trf_parameters, &td->args->x,
-      &td->args->y, &td->args->k, job->left, job->top, job->cols, job->rows);
+      args->Y_int8, (const bnn_b256_t *)args->X, (const bnn_b256_t *)args->K,
+      args->post_act_mult, args->post_act_bias, args->output_trf_parameters,
+      &args->x, &args->y, &args->k, job->left, job->top, job->cols, job->rows);
 }
 
 ATTRIBUTE_THREAD_FUNCTION void bconv2d_int8_thread_worker(void *context) {
   auto *td = static_cast<BConv2DThreadData *>(context);
+  auto *args = td->args;
   auto *job = td->job;
-  bconv2d_int8_valid(td->args->Y_int8, td->args->X, td->args->K,
-                     td->args->post_act_mult, td->args->post_act_bias,
-                     td->args->accu_modifier, td->args->output_trf_parameters,
-                     td->thread_scratch, &td->args->x, &td->args->y,
-                     &td->args->k, job->left, job->top, job->cols, job->rows);
+  bconv2d_int8_valid(args->Y_int8, args->X, args->K, args->post_act_mult,
+                     args->post_act_bias, args->accu_modifier,
+                     args->output_trf_parameters, td->thread_scratch, &args->x,
+                     &args->y, &td->args->k, job->left, job->top, job->cols,
+                     job->rows);
 }
 }
 
