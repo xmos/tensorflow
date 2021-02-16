@@ -1,14 +1,14 @@
-#include <complex>
-
 #include "tensorflow/lite/micro/kernels/xcore/xcore_utils.h"
+
+#include <complex>
 
 namespace tflite {
 namespace ops {
 namespace micro {
 namespace xcore {
 
-TfLiteStatus GetSizeOfType(TfLiteContext* context, const TfLiteType type,
-                           size_t* bytes) {
+TfLiteStatus GetSizeOfType(TfLiteContext *context, const TfLiteType type,
+                           size_t *bytes) {
   // TODO(levp): remove the default case so that new types produce compilation
   // error.
   switch (type) {
