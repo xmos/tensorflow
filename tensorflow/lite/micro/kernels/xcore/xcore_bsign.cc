@@ -7,6 +7,7 @@
 #include "tensorflow/lite/micro/kernels/kernel_util.h"
 #include "tensorflow/lite/micro/kernels/xcore/xcore_custom_options.h"
 #include "tensorflow/lite/micro/kernels/xcore/xcore_dispatcher.h"
+#include "tensorflow/lite/micro/kernels/xcore/xcore_utils.h"
 
 extern "C" {
 #include "lib_nn/api/nn_operator.h"
@@ -16,119 +17,106 @@ namespace tflite {
 namespace ops {
 namespace micro {
 namespace xcore {
-
-//**************************************
-//**************************************
-//**************************************
-// BSign
-//**************************************
-//**************************************
-//**************************************
 namespace bsign {
 
-struct BSign8OpData {
-  nn_bsign_8_plan_t plan;
-  nn_bsign_8_job_t* jobs;
-  unsigned n_threads;
-  size_t stack_size;  // The amount of stack required to run an instance of
-                      // bsign_8_thread_worker
-  int stack_scratch_index;  // The index where the above stack will be allocated
-};
+// -------------------------------------------------------------------- //
+// kernel argument type
+// -------------------------------------------------------------------- //
 
-struct BSign8ThreadData {
+struct BSign8Args {
   int32_t* Y;
   const int8_t* X;
-  nn_bsign_8_plan_t* plan;
-  nn_bsign_8_job_t* job;
+  int8_t zero_point_vec[VPU_INT8_EPV];
+};
+
+// -------------------------------------------------------------------- //
+// thread data type and worker functions
+// -------------------------------------------------------------------- //
+
+struct BSign8ThreadData {
+  const BSign8Args* args;
+  const nn_bsign_8_job_t* job;
 };
 
 extern "C" {
 ATTRIBUTE_THREAD_FUNCTION void bsign_8_thread_worker(void* context) {
-  TFLITE_DCHECK(context != nullptr);
-  BSign8ThreadData* td = (BSign8ThreadData*)context;
-  TFLITE_DCHECK(td->Y != nullptr);
-  TFLITE_DCHECK(td->X != nullptr);
-  bsign_8(td->Y, td->X, td->plan, td->job);
+  auto* td = (BSign8ThreadData*)context;
+  auto* args = td->args;
+  bsign_8(args->Y, args->X, args->zero_point_vec, td->job);
 }
 }
+
+// -------------------------------------------------------------------- //
+// op data types
+// -------------------------------------------------------------------- //
+
+struct BSign8OpData {
+  BSign8Args args;
+  PersistentArray<nn_bsign_8_job_t> jobs;
+  PersistentArray<BSign8ThreadData> threads;
+  size_t stack_size;  // The amount of stack required to run all thread workers
+  int stack_scratch_index = -1;
+};
+
+// -------------------------------------------------------------------- //
+// op function implementations
+// -------------------------------------------------------------------- //
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-  BSign8OpData* op = reinterpret_cast<BSign8OpData*>(
-      context->AllocatePersistentBuffer(context, sizeof(BSign8OpData)));
+  auto* op_data = construct_persistent_object<BSign8OpData>(context);
 
-  op->jobs = nullptr;
-  op->stack_scratch_index = -1;
-  op->stack_size = 0;
+  // TODO parse data for parallelism
+  // in this op we have one job per thread
+  int n_threads = 1;
+  op_data->jobs.allocate(context, n_threads).initialize();
+  op_data->threads.allocate(context, n_threads);
+  for (auto& job : op_data->jobs) {
+    op_data->threads.append({&op_data->args, &job});
+  }
 
-  // TODO get n_threads from custom options
-  // TFLITE_DCHECK(buffer != nullptr);
-  /* Retrieve custom options */
-  // op->n_threads = named_uint32_custom_option(context, buffer, length, "th");
-  op->n_threads = 1;
-
-  /* Allocate the jobs */
-  op->jobs =
-      reinterpret_cast<nn_bsign_8_job_t*>(context->AllocatePersistentBuffer(
-          context, sizeof(nn_bsign_8_job_t*) * op->n_threads));
-
-  return op;
+  return op_data;
 }
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 1);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
-  const TfLiteTensor* input = GetInput(context, node, 0);
-  const int32_t inputLength = input->bytes / sizeof(int8_t);
+  auto* op_data = reinterpret_cast<BSign8OpData*>(node->user_data);
 
-  BSign8OpData* op = reinterpret_cast<BSign8OpData*>(node->user_data);
+  const auto* input = GetInput(context, node, 0);
+  const int32_t input_size = input->bytes / sizeof(int8_t);
+  bsign_8_prepare(op_data->jobs.begin(), op_data->args.zero_point_vec,
+                  input_size, input->params.zero_point, op_data->jobs.size());
 
   /* Allocate the stack for thread workers */
-  GET_THREAD_FUNCTION_STACKSIZE(op->stack_size, bsign_8_thread_worker);
-  context->RequestScratchBufferInArena(context, op->stack_size * op->n_threads,
-                                       &op->stack_scratch_index);
-  TFLITE_DCHECK(op->stack_scratch_index != -1);
-
-  /* Prepare the kernel */
-  bsign_8_prepare(&op->plan, op->jobs, inputLength, input->params.zero_point,
-                  op->n_threads);
+  GET_THREAD_FUNCTION_STACKSIZE(op_data->stack_size, bsign_8_thread_worker);
+  TF_LITE_ENSURE_STATUS(context->RequestScratchBufferInArena(
+      context, op_data->stack_size * op_data->threads.size(),
+      &op_data->stack_scratch_index));
 
   return kTfLiteOk;
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  const TfLiteEvalTensor* input = tflite::micro::GetEvalInput(context, node, 0);
-  TfLiteEvalTensor* output = tflite::micro::GetEvalOutput(context, node, 0);
+  auto* op_data = reinterpret_cast<BSign8OpData*>(node->user_data);
 
-  BSign8OpData* op = reinterpret_cast<BSign8OpData*>(node->user_data);
+  op_data->args.X = tflite::micro::GetTensorData<int8_t>(
+      tflite::micro::GetEvalInput(context, node, 0));
+  op_data->args.Y = tflite::micro::GetTensorData<int32_t>(
+      tflite::micro::GetEvalOutput(context, node, 0));
 
   Dispatcher* dispatcher = GetDispatcher();
 
   // initialize the dispatcher
-  char* stack = static_cast<char*>(
-      context->GetScratchBuffer(context, op->stack_scratch_index));
+  auto* stack = static_cast<char*>(
+      context->GetScratchBuffer(context, op_data->stack_scratch_index));
+  TF_LITE_ENSURE(context, stack);
+  dispatcher->InitializeTasks(bsign_8_thread_worker, stack,
+                              op_data->stack_size);
 
-  TFLITE_DCHECK(stack != nullptr);
-  dispatcher->InitializeTasks(bsign_8_thread_worker, stack, op->stack_size);
-
-  // create thread data and tasks
-  BSign8ThreadData thread_data[op->n_threads];
-
-  for (int i = 0; i < op->n_threads; i++) {
-    thread_data[i].Y = nullptr;
-    thread_data[i].X = nullptr;
-    thread_data[i].job = nullptr;
-    thread_data[i].plan = nullptr;
+  for (auto& thread : op_data->threads) {
+    dispatcher->AddTask(reinterpret_cast<void*>(&thread));
   }
-
-  for (int i_job = 0; i_job < op->n_threads; i_job++) {
-    thread_data[i_job].Y = tflite::micro::GetTensorData<int32_t>(output);
-    thread_data[i_job].X = tflite::micro::GetTensorData<int8_t>(input);
-    thread_data[i_job].job = &op->jobs[i_job];
-    thread_data[i_job].plan = &op->plan;
-    dispatcher->AddTask(reinterpret_cast<void*>(&thread_data[i_job]));
-  }
-  // start and wait for tasks to complete
   dispatcher->JoinTasks();
 
   return kTfLiteOk;

@@ -52,10 +52,10 @@ struct BConv2DArguments {
 
 struct BConv2DThreadData {
   // TODO: change this when new dispatcher is rolled out
-  RowColRegion *job;  // This describes the region that that thread will process
+  const RowColRegion *job;  // This describes the region that that thread will process
   int thread_scratch_idx = -1;
   bnn_b32_t *thread_scratch;  // size should be K_h * K_w * C_in / 32 + 8
-  BConv2DArguments *args;
+  const BConv2DArguments *args;
 };
 
 extern "C" {
