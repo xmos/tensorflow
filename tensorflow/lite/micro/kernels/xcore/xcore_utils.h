@@ -69,14 +69,25 @@ class PersistentArray {
 
  public:
   // call this only in the Init phase of operators
-  void allocate(TfLiteContext *context, size_t max_size) {
+  PersistentArray<T> &allocate(TfLiteContext *context,
+                               size_t max_size) noexcept {
     assert(data_ == nullptr);
     assert(max_size > 0);
 
     max_size_ = max_size;
     data_ = reinterpret_cast<T *>(
         context->AllocatePersistentBuffer(context, sizeof(T) * max_size));
-  }
+
+    return *this;
+  };
+  PersistentArray<T> &initialize() noexcept {
+    assert(size_ == 0);
+    while (size_ < max_size_) {
+      this->append(T());
+    }
+
+    return *this;
+  };
   // TODO: begin and end would be better if returned an iterator object
   inline T *begin() noexcept {
     assert(size_ > 0);
