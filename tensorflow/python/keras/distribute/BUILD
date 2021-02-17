@@ -9,6 +9,7 @@ load("//tensorflow:tensorflow.bzl", "tf_py_test")  # buildifier: disable=same-or
 package(
     # TODO(scottzhu): Remove this deps when distribute test are converted to integration test.
     default_visibility = [
+        "//tensorflow:internal",
         "//tensorflow/python/distribute:__pkg__",
         "//tensorflow/python/keras:__subpackages__",
         "//tensorflow/tools/pip_package:__pkg__",
@@ -249,6 +250,7 @@ distribute_py_test(
     main = "custom_training_loop_metrics_test.py",
     tags = [
         "multi_and_single_gpu",
+        "no_rocm",
     ],
     deps = [
         ":strategy_combinations",
@@ -270,6 +272,7 @@ distribute_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_cuda_asan",  # times out
+        "no_rocm",
         "notsan",  # TODO(b/170954243)
     ],
     tpu_tags = [
@@ -446,6 +449,7 @@ distribute_py_test(
         "no_rocm",  # times out on ROCm
         "no_windows_gpu",
         "nogpu",  # TODO(b/170905292)
+        "notap",  # TODO(b/178803051): flaky
         "notsan",
     ],
     deps = [
@@ -543,6 +547,7 @@ distribute_py_test(
     shard_count = 31,
     tags = [
         "multi_and_single_gpu",
+        "no_rocm",
         "no_windows_gpu",
         "noasan",  # TODO(b/337374867) fails with -fsanitize=null
         "notpu",  # TODO(b/153672562)
@@ -562,6 +567,7 @@ distribute_py_test(
     shard_count = 7,
     tags = [
         "multi_and_single_gpu",
+        "no_rocm",
     ],
     xla_tags = [
         "no_cuda_asan",  # times out
@@ -686,6 +692,7 @@ cuda_py_test(
     python_version = "PY3",
     tags = [
         "multi_and_single_gpu",
+        "no_tfrt",  # TODO(b/179839466): Reenable TFRT after the issue is resolved.
         "no_windows_gpu",  # TODO(b/130551176)
     ],
     deps = [
@@ -700,6 +707,7 @@ cuda_py_test(
         "//tensorflow/python/eager:test",
         "//tensorflow/python/keras/engine",
         "//tensorflow/python/keras/layers:core",
+        "//tensorflow/python/keras/utils:kpl_test_utils",
     ],
 )
 

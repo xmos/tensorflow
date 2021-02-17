@@ -257,7 +257,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
       RecordStart(ctx);
       profiler::TraceMe traceme([&] {
         return profiler::TraceMeEncode("ParallelMapConsume",
-                                       {{"element_id", result->id}});
+                                       {{"element_id", result->uid}});
       });
       return ProcessResult(ctx, result, out_tensors, end_of_sequence);
     }
@@ -318,7 +318,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(
           reader->ReadScalar(absl::StrCat(prefix(), "::", kInvocationResults),
                              kSize, &invocation_results_size));
-      if (!invocation_results_.empty()) invocation_results_.clear();
+      DCHECK(invocation_results_.empty());
       for (size_t i = 0; i < invocation_results_size; i++) {
         invocation_results_.push_back(std::make_shared<InvocationResult>());
         auto& result = *invocation_results_.back();
@@ -345,6 +345,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
               &result.return_values.back()));
         }
         result.end_of_input = reader->Contains(element_prefix, kEndOfInput);
+        RecordBufferEnqueue(ctx, result.return_values);
         result.notification.Notify();
       }
       return Status::OK();
@@ -371,14 +372,13 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
 
    private:
     struct InvocationResult {
-      InvocationResult() = default;
-      explicit InvocationResult(int64 id) : id(id) {}
+      InvocationResult() : uid(tensorflow::EnvTime::NowNanos()) {}
 
       Notification notification;
       Status status;
       std::vector<Tensor> return_values;
       bool end_of_input = false;
-      int64 id = -1;
+      const int64 uid;
     };
 
     void CancelThreads(bool wait) TF_LOCKS_EXCLUDED(mu_) {
@@ -420,7 +420,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
         TF_LOCKS_EXCLUDED(*mu_) {
       profiler::TraceMe traceme([&] {
         return profiler::TraceMeEncode("ParallelMapProduce",
-                                       {{"element_id", result->id}});
+                                       {{"element_id", result->uid}});
       });
       // Get the next input element.
       std::vector<Tensor> input_element;
@@ -514,8 +514,6 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
         return num_calls_ >= num_parallel_calls ||
                invocation_results_.size() >= num_parallel_calls;
       };
-      // Counts the total number of calls to use as an id of InvocationResult.
-      int64 num_total_calls = 0;
       while (true) {
         {
           mutex_lock l(*mu_);
@@ -528,8 +526,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
             return;
           }
           while (!busy()) {
-            invocation_results_.push_back(
-                std::make_shared<InvocationResult>(num_total_calls++));
+            invocation_results_.push_back(std::make_shared<InvocationResult>());
             new_calls.push_back(invocation_results_.back());
             num_calls_++;
           }

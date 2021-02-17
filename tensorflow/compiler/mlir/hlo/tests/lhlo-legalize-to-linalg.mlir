@@ -10,7 +10,7 @@ func @element_wise(%lhs: memref<2x2xf32>, %rhs: memref<2x2xf32>,
 }
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[LHS_IN:.*]]: f32, %[[RHS_IN:.*]]: f32, %[[RESULT_OUT:.*]]: f32):
-// CHECK-NEXT:   %[[RESULT:.*]] = powf %[[LHS_IN]], %[[RHS_IN]] : f32
+// CHECK-NEXT:   %[[RESULT:.*]] = math.powf %[[LHS_IN]], %[[RHS_IN]] : f32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
 
 // -----
@@ -70,7 +70,10 @@ func @minf(%lhs: memref<2x2xf32>, %rhs: memref<2x2xf32>,
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[LHS_IN:.*]]: f32, %[[RHS_IN:.*]]: f32, %[[RESULT_OUT:.*]]: f32):
 // CHECK-NEXT:   %[[CMP:.*]] = cmpf olt, %[[LHS_IN]], %[[RHS_IN]] : f32
-// CHECK-NEXT:   %[[RESULT:.*]] = select %[[CMP]], %[[LHS_IN]], %[[RHS_IN]] : f32
+// CHECK-NEXT:   %[[MIN:.*]] = select %[[CMP]], %[[LHS_IN]], %[[RHS_IN]] : f32
+// CHECK-NEXT:   %[[ISNAN:.*]] = cmpf uno, %[[LHS_IN]], %[[RHS_IN]] : f32
+// CHECK-NEXT:   %[[NAN:.*]] = constant 0x7FC00000 : f32
+// CHECK-NEXT:   %[[RESULT:.*]] = select %[[ISNAN]], %[[NAN]], %[[MIN]] : f32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
 
 // -----
@@ -112,7 +115,7 @@ func @exp(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
 }
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f32, %[[RESULT_OUT:.*]]):
-// CHECK-NEXT:   %[[RESULT:.*]] = exp %[[OPERAND_IN]] : f32
+// CHECK-NEXT:   %[[RESULT:.*]] = math.exp %[[OPERAND_IN]] : f32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
 
 // -----
@@ -124,7 +127,7 @@ func @log(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
 }
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f32, %[[RESULT_OUT:.*]]):
-// CHECK-NEXT:   %[[RESULT:.*]] = log %[[OPERAND_IN]] : f32
+// CHECK-NEXT:   %[[RESULT:.*]] = math.log %[[OPERAND_IN]] : f32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
 
 // -----
@@ -404,6 +407,30 @@ func @ceil(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
 
 // -----
 
+// CHECK-LABEL: func @convert_i1_to_f32
+func @convert_i1_to_f32(%input: memref<2x2xi1>, %result: memref<2x2xf32>) {
+  "lmhlo.convert"(%input, %result) : (memref<2x2xi1>, memref<2x2xf32>) -> ()
+  return
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: i1, %[[RESULT_OUT:.*]]: f32):
+// CHECK-NEXT:   %[[RESULT:.*]] = uitofp %[[OPERAND_IN]] : i1 to f32
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
+
+// -----
+
+// CHECK-LABEL: func @convert_i1_to_i32
+func @convert_i1_to_i32(%input: memref<2x2xi1>, %result: memref<2x2xi32>) {
+  "lmhlo.convert"(%input, %result) : (memref<2x2xi1>, memref<2x2xi32>) -> ()
+  return
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: i1, %[[RESULT_OUT:.*]]: i32):
+// CHECK-NEXT:   %[[RESULT:.*]] = zexti %[[OPERAND_IN]] : i1 to i32
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : i32
+
+// -----
+
 // CHECK-LABEL: func @convert_i32_to_f32
 func @convert_i32_to_f32(%input: memref<2x2xi32>, %result: memref<2x2xf32>) {
   "lmhlo.convert"(%input, %result) : (memref<2x2xi32>, memref<2x2xf32>) -> ()
@@ -424,7 +451,7 @@ func @convert_i16_to_i32(%input: memref<2x2xi16>,
 }
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: i16, %[[RESULT_OUT:.*]]: i32):
-// CHECK-NEXT:   %[[RESULT:.*]] = zexti %[[OPERAND_IN]] : i16 to i32
+// CHECK-NEXT:   %[[RESULT:.*]] = sexti %[[OPERAND_IN]] : i16 to i32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : i32
 
 // -----
@@ -487,6 +514,34 @@ func @convert_f32_to_f32(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
 
 // -----
 
+// CHECK-LABEL: func @convert_i32_to_i1
+func @convert_i32_to_i1(%input: memref<2x2xi32>, %result: memref<2x2xi1>) {
+  "lmhlo.convert"(%input, %result)
+      : (memref<2x2xi32>, memref<2x2xi1>) -> ()
+  return
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: i32, %[[RESULT_OUT:.*]]: i1):
+// CHECK-NEXT:   %[[ZERO:.*]] = constant 0 : i32
+// CHECK-NEXT:   %[[RESULT:.*]] = cmpi ne, %[[OPERAND_IN]], %[[ZERO]] : i32
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : i1
+
+// -----
+
+// CHECK-LABEL: func @convert_f32_to_i1
+func @convert_f32_to_i1(%input: memref<2x2xf32>, %result: memref<2x2xi1>) {
+  "lmhlo.convert"(%input, %result)
+      : (memref<2x2xf32>, memref<2x2xi1>) -> ()
+  return
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f32, %[[RESULT_OUT:.*]]: i1):
+// CHECK-NEXT:   %[[ZERO:.*]] = constant 0.000000e+00 : f32
+// CHECK-NEXT:   %[[RESULT:.*]] = cmpf une, %[[OPERAND_IN]], %[[ZERO]] : f32
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : i1
+
+// -----
+
 // CHECK-LABEL: func @convert_f32_to_i32
 func @convert_f32_to_i32(%input: memref<2x2xf32>, %result: memref<2x2xi32>) {
   "lmhlo.convert"(%input, %result)
@@ -507,7 +562,7 @@ func @cos(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
 }
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f32, %[[RESULT_OUT:.*]]):
-// CHECK-NEXT:   %[[RESULT:.*]] = cos %[[OPERAND_IN]] : f32
+// CHECK-NEXT:   %[[RESULT:.*]] = math.cos %[[OPERAND_IN]] : f32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
 
 // -----
@@ -521,7 +576,7 @@ func @sin(%input: memref<2x2xf32>,
 }
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f32, %[[RESULT_OUT:.*]]):
-// CHECK-NEXT:   %[[RESULT:.*]] = sin %[[OPERAND_IN]] : f32
+// CHECK-NEXT:   %[[RESULT:.*]] = math.sin %[[OPERAND_IN]] : f32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
 
 // -----
@@ -597,7 +652,7 @@ func @rsqrt(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
 }
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f32, %[[RESULT_OUT:.*]]):
-// CHECK-NEXT:   %[[RESULT:.*]] = rsqrt %[[OPERAND_IN]] : f32
+// CHECK-NEXT:   %[[RESULT:.*]] = math.rsqrt %[[OPERAND_IN]] : f32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
 
 // -----
@@ -661,7 +716,7 @@ func @sqrt(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
 }
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f32, %[[RESULT_OUT:.*]]):
-// CHECK-NEXT:   %[[RESULT:.*]] = sqrt %[[OPERAND_IN]] : f32
+// CHECK-NEXT:   %[[RESULT:.*]] = math.sqrt %[[OPERAND_IN]] : f32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
 
 // -----
@@ -673,7 +728,7 @@ func @tanh(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
 }
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f32, %[[RESULT_OUT:.*]]):
-// CHECK-NEXT:   %[[RESULT:.*]] = tanh %[[OPERAND_IN]] : f32
+// CHECK-NEXT:   %[[RESULT:.*]] = math.tanh %[[OPERAND_IN]] : f32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
 
 // -----
@@ -688,7 +743,7 @@ func @complex(%real: memref<2x2xf32>,
 }
 // CHECK:      linalg.generic
 // CHECK-NEXT: ^bb0(%[[RE:.*]]: f32, %[[IM:.*]]: f32, %[[CP:.*]]: complex<f32>):
-// CHECK-NEXT:   %[[RESULT:.*]] = create_complex %[[RE]], %[[IM]] : complex<f32>
+// CHECK-NEXT:   %[[RESULT:.*]] = complex.create %[[RE]], %[[IM]] : complex<f32>
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : complex<f32>
 
 // -----
@@ -702,7 +757,7 @@ func @real(%cplx: memref<2x2xcomplex<f32>>,
 }
 // CHECK:      linalg.generic
 // CHECK-NEXT: ^bb0(%[[CPLX_IN:.*]]: complex<f32>, %[[REAL_OUT:.*]]: f32):
-// CHECK-NEXT:   %[[REAL:.*]] = re %[[CPLX_IN:.*]] : complex<f32>
+// CHECK-NEXT:   %[[REAL:.*]] = complex.re %[[CPLX_IN:.*]] : complex<f32>
 // CHECK-NEXT:   linalg.yield %[[REAL]] : f32
 
 // -----
@@ -716,7 +771,7 @@ func @imag(%cplx: memref<2x2xcomplex<f32>>,
 }
 // CHECK:      linalg.generic
 // CHECK-NEXT: ^bb0(%[[CPLX_IN:.*]]: complex<f32>, %[[IMAG_OUT:.*]]: f32):
-// CHECK-NEXT:   %[[IMAG:.*]] = im %[[CPLX_IN:.*]] : complex<f32>
+// CHECK-NEXT:   %[[IMAG:.*]] = complex.im %[[CPLX_IN:.*]] : complex<f32>
 // CHECK-NEXT:   linalg.yield %[[IMAG]] : f32
 
 // -----
@@ -730,15 +785,7 @@ func @slice(%operand: memref<?x?xf32>, %result: memref<?x?xf32>) {
   } : (memref<?x?xf32>, memref<?x?xf32>) -> ()
   return
 }
-// CHECK: %[[L0:.*]] = constant 0 : index
-// CHECK: %[[L2:.*]] = constant 2 : index
-// CHECK: %[[L1:.*]] = constant 1 : index
-// CHECK: %[[LHS:.*]] = linalg.range %[[L0]] : %[[L2]] : %[[L1]]
-// CHECK: %[[R0:.*]] = constant 1 : index
-// CHECK: %[[R2:.*]] = constant 3 : index
-// CHECK: %[[R1:.*]] = constant 1 : index
-// CHECK: %[[RHS:.*]] = linalg.range %[[R0]] : %[[R2]] : %[[R1]]
-// CHECK: %[[RESULT:.*]] = linalg.slice %[[IN]][%[[LHS]], %[[RHS]]]
+// CHECK: %[[RESULT:.*]] = subview %[[IN]][0, 1] [2, 2] [1, 1] : memref<?x?xf32> to memref<2x2xf32, #{{.*}}>
 // CHECK: linalg.copy(%[[RESULT]], %[[OUT]])
 
 // -----
@@ -788,6 +835,20 @@ func @reshape_2D_4D(%arg0: memref<12x42xi32>, %arg1 : memref<12x1x42x1xi32>) {
 func @reshape_3D_4D(%arg0: memref<1x49x16xf32>, %arg1: memref<1x784x1x1xf32>) {
   "lmhlo.reshape"(%arg0, %arg1)
    : (memref<1x49x16xf32>, memref<1x784x1x1xf32>) -> ()
+  return
+}
+// CHECK: linalg.reshape %{{.*}} [#[[RESHAPE_MAP1]]]
+// CHECK: linalg.reshape %{{.*}} [#[[RESHAPE_MAP2]]]
+// CHECK: linalg.copy
+
+// -----
+
+// CHECK-DAG: #[[RESHAPE_MAP1:.*]] = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+// CHECK-DAG: #[[RESHAPE_MAP2:.*]] = affine_map<(d0, d1, d2) -> (d0, d1, d2)>
+// CHECK-LABEL: func @reshape_4D_3D
+func @reshape_4D_3D(%arg0: memref<1x8x10x3xf32>, %arg1: memref<1x240x1xf32>) {
+  "lmhlo.reshape"(%arg0, %arg1)
+   : (memref<1x8x10x3xf32>, memref<1x240x1xf32>) -> ()
   return
 }
 // CHECK: linalg.reshape %{{.*}} [#[[RESHAPE_MAP1]]]
@@ -936,9 +997,9 @@ func @reduce_maximum(%arg: memref<100x10xf32>,
 // CHECK-NEXT: store
 // CHECK-NEXT: load
 // CHECK-NEXT: load
-// CHECK-NEXT: cmpf
-// CHECK-NEXT: select
-// CHECK-NEXT: store
+// CHECK: cmpf
+// CHECK: select
+// CHECK: store
 // CHECK-NEXT: load
 // CHECK-NEXT: linalg.yield
 // CHECK-NEXT: }
