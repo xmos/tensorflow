@@ -48,14 +48,14 @@ class ExtendedXCoreInterpreter : public XCoreInterpreter {
                            uint8_t* arena, size_t arena_size,
                            tflite::ErrorReporter* reporter,
                            bool use_current_thread = true,
-                           tflite::Profiler* profiler = nullptr);
+                           tflite::MicroProfiler* profiler = nullptr);
 
   ExtendedXCoreInterpreter(const tflite::Model* model,
                            const tflite::MicroOpResolver& resolver,
                            tflite::MicroAllocator* allocator,
                            tflite::ErrorReporter* reporter,
                            bool use_current_thread = true,
-                           tflite::Profiler* profiler = nullptr);
+                           tflite::MicroProfiler* profiler = nullptr);
 
   size_t input_tensor_index(size_t input_index);
   size_t output_tensor_index(size_t output_index);
