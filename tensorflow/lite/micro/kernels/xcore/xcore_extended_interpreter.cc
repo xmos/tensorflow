@@ -96,7 +96,7 @@ void BufferedErrorReporter::Clear() { log_stream_.str(""); }
 ExtendedXCoreInterpreter::ExtendedXCoreInterpreter(
     const tflite::Model* model, const tflite::MicroOpResolver& resolver,
     uint8_t* arena, size_t arena_size, tflite::ErrorReporter* reporter,
-    bool use_current_thread, tflite::Profiler* profiler)
+    bool use_current_thread, tflite::MicroProfiler* profiler)
     : XCoreInterpreter(model, resolver, arena, arena_size, reporter,
                        use_current_thread, profiler),
       model_(model),
@@ -105,7 +105,7 @@ ExtendedXCoreInterpreter::ExtendedXCoreInterpreter(
 ExtendedXCoreInterpreter::ExtendedXCoreInterpreter(
     const tflite::Model* model, const tflite::MicroOpResolver& resolver,
     tflite::MicroAllocator* allocator, tflite::ErrorReporter* reporter,
-    bool use_current_thread, tflite::Profiler* profiler)
+    bool use_current_thread, tflite::MicroProfiler* profiler)
     : XCoreInterpreter(model, resolver, allocator, reporter, use_current_thread,
                        profiler),
       model_(model),

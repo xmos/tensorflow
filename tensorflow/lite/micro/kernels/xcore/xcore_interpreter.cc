@@ -10,7 +10,7 @@ XCoreInterpreter::XCoreInterpreter(const tflite::Model* model,
                                    uint8_t* arena, size_t arena_size,
                                    tflite::ErrorReporter* reporter,
                                    bool use_current_thread,
-                                   tflite::Profiler* profiler)
+                                   tflite::MicroProfiler* profiler)
     : tflite::MicroInterpreter(model, resolver, arena, arena_size, reporter,
                                profiler),
       dispatcher_(reporter, use_current_thread) {
@@ -22,7 +22,7 @@ XCoreInterpreter::XCoreInterpreter(const tflite::Model* model,
                                    tflite::MicroAllocator* allocator,
                                    tflite::ErrorReporter* reporter,
                                    bool use_current_thread,
-                                   tflite::Profiler* profiler)
+                                   tflite::MicroProfiler* profiler)
     : tflite::MicroInterpreter(model, resolver, allocator, reporter, profiler),
       dispatcher_(reporter, use_current_thread) {
   SetDispatcher(&dispatcher_);

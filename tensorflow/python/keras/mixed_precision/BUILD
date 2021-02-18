@@ -68,7 +68,7 @@ tf_py_test(
         "policy_test.py",
     ],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     tags = ["no_rocm"],
     deps = [
         ":policy",
@@ -93,7 +93,7 @@ py_library(
 cuda_py_test(
     name = "device_compatibility_check_test",
     srcs = ["device_compatibility_check_test.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     tfrt_enabled = True,
     deps = [
         ":device_compatibility_check",
@@ -114,7 +114,7 @@ py_library(
 tf_py_test(
     name = "get_layer_policy_test",
     srcs = ["get_layer_policy_test.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":get_layer_policy",
         ":policy",
@@ -134,8 +134,8 @@ py_library(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:variables",
+        "//tensorflow/python/distribute:distribute_utils",
         "//tensorflow/python/distribute:ps_values",
-        "//tensorflow/python/distribute:values",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/types",
     ],
@@ -146,6 +146,9 @@ tf_py_test(
     size = "medium",
     srcs = ["autocast_variable_test.py"],
     python_version = "PY3",
+    tags = [
+        "no_tfrt",  # TODO(b/179863362)
+    ],
     deps = [
         ":autocast_variable",
         "//tensorflow/python:client_testlib",
@@ -280,13 +283,16 @@ cuda_py_test(
     ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "layer_correctness_test",
     size = "medium",
     srcs = ["layer_correctness_test.py"],
     python_version = "PY3",
     shard_count = 10,
-    tags = ["no_rocm"],
+    tags = [
+        "no_rocm",
+        "no_tfrt",  # TODO(b/179863362)
+    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/compat:v2_compat",

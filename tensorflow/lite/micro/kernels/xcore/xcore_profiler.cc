@@ -10,15 +10,11 @@ namespace xcore {
 
 XCoreProfiler::XCoreProfiler() : event_count_(0) {}
 
-void XCoreProfiler::Reset() { event_count_ = 0; }
+uint32_t const* XCoreProfiler::GetEventDurations() { return event_durations_; }
 
-uint32_t const* XCoreProfiler::GetTimes() { return event_times_; }
+uint32_t XCoreProfiler::GetNumEvents() { return event_count_; }
 
-uint32_t XCoreProfiler::GetNumTimes() { return event_count_; }
-
-uint32_t XCoreProfiler::BeginEvent(const char* tag, EventType event_type,
-                                   int64_t event_metadata1,
-                                   int64_t event_metadata2) {
+uint32_t XCoreProfiler::BeginEvent(const char* tag) {
   event_start_time_ = tflite::GetCurrentTimeTicks();
   TFLITE_DCHECK(tag != nullptr);
   event_tag_ = tag;
@@ -30,7 +26,7 @@ void XCoreProfiler::EndEvent(uint32_t event_handle) {
   int32_t event_end_time = tflite::GetCurrentTimeTicks();
   event_duration = event_end_time - event_start_time_;
   if (event_count_ < XCORE_PROFILER_MAX_LEVELS) {
-    event_times_[event_count_] = event_duration;
+    event_durations_[event_count_] = event_duration;
     event_count_++;
   }
 }
