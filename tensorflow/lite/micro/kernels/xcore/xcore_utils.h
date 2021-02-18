@@ -51,13 +51,20 @@ static inline bool is_ram_address(uintptr_t a) {
 }
 
 static inline TfLiteStatus request_scratch_if_needed(TfLiteContext *context,
-                                                     const TfLiteTensor *tensor,
+                                                     const void *source_address,
+                                                     const size_t size,
                                                      int &scratch_idx) {
-  if (!is_ram_address((uintptr_t)tensor->data.data)) {
-    return context->RequestScratchBufferInArena(context, tensor->bytes,
-                                                &scratch_idx);
+  if (!is_ram_address((uintptr_t)source_address)) {
+    return context->RequestScratchBufferInArena(context, size, &scratch_idx);
   }
   return kTfLiteOk;
+}
+
+static inline TfLiteStatus request_scratch_if_needed(TfLiteContext *context,
+                                                     const TfLiteTensor *tensor,
+                                                     int &scratch_idx) {
+  return request_scratch_if_needed(context, tensor->data.data, tensor->bytes,
+                                   scratch_idx);
 }
 
 template <typename T>
