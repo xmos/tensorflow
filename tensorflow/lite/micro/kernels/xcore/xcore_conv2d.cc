@@ -165,10 +165,14 @@ TfLiteStatus PrepareCommon(TfLiteContext *context, TfLiteNode *node) {
 
   auto *op_data = reinterpret_cast<Conv2DOpData *>(node->user_data);
 
-  TF_LITE_ENSURE_STATUS(request_scratch_if_needed(
-      context, GetInput(context, node, 1), op_data->weights_scratch_index));
-  TF_LITE_ENSURE_STATUS(request_scratch_if_needed(
-      context, GetInput(context, node, 2), op_data->bias_scratch_index));
+  TF_LITE_ENSURE_STATUS(
+      request_scratch_if_needed(context, GetInput(context, node, 1)->data.data,
+                                op_data->execution_plan.GetWeightsScratchSize(),
+                                op_data->weights_scratch_index));
+  TF_LITE_ENSURE_STATUS(
+      request_scratch_if_needed(context, GetInput(context, node, 2)->data.data,
+                                op_data->execution_plan.GetBiasScratchSize(),
+                                op_data->bias_scratch_index));
 
   const auto &input_shape = GetTensorShape(GetInput(context, node, 0));
   op_data->args.x_image = {(uint32_t)input_shape.Dims(1),
