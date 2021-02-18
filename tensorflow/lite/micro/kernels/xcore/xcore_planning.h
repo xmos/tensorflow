@@ -40,11 +40,9 @@ class ExecutionPlan {
 
   void SetWeightsScratchSize(size_t size);
   size_t GetWeightsScratchSize();
-  size_t GetWeightsScratchOffset();
 
   void SetBiasScratchSize(size_t size);
   size_t GetBiasScratchSize();
-  size_t GetBiasScratchOffset();
 
   PersistentArray<RowColRegion> regions;
   PersistentArray<ChannelGroup> changrps;
