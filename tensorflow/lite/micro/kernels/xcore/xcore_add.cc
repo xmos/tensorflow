@@ -17,109 +17,117 @@ namespace micro {
 namespace xcore {
 namespace add {
 
-struct AddOpData {
-  // ExecutionPlan execution_plan;
-  nn_add_params_t params;
-  int stack_scratch_index;
-  size_t stack_size;
-};
+// -------------------------------------------------------------------- //
+// kernel argument type
+// -------------------------------------------------------------------- //
 
-struct AddThreadData {
+struct BConv2DArguments {
   int8_t* Y;
   const int8_t* X0;
   const int8_t* X1;
-  const nn_add_params_t* params;
+  nn_add_params_t params;
+};
+
+// -------------------------------------------------------------------- //
+// thread data type and worker functions
+// -------------------------------------------------------------------- //
+struct AddThreadData {
   int32_t start;
-  int32_t count;
+  int32_t element_count;
+  const BConv2DArguments* args;
 };
 
 extern "C" {
 ATTRIBUTE_THREAD_FUNCTION void add_thread_worker(void* context) {
-  AddThreadData* td = (AddThreadData*)context;
-  add_elementwise(td->Y, td->X0, td->X1, td->params, td->start, td->count);
+  auto* td = static_cast<AddThreadData*>(context);
+  auto* args = td->args;
+  add_elementwise(args->Y, args->X0, args->X1, &args->params, td->start,
+                  td->element_count);
 }
 }
+
+// -------------------------------------------------------------------- //
+// op data types
+// -------------------------------------------------------------------- //
+
+struct AddOpData {
+  BConv2DArguments args;
+  PersistentArray<AddThreadData> threads;
+  int stack_scratch_index = -1;
+  size_t stack_size;
+};
+
+// -------------------------------------------------------------------- //
+// op function implementations
+// -------------------------------------------------------------------- //
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-  AddOpData* op = reinterpret_cast<AddOpData*>(
-      context->AllocatePersistentBuffer(context, sizeof(AddOpData)));
-  op->stack_scratch_index = -1;
-  op->stack_size = 0;
+  auto* op_data = construct_persistent_object<AddOpData>(context);
 
-  return op;
+  auto par_parser = CustomOptionParser(
+      CustomOptionParser(buffer, length).parseNamedCustomOption("par").AsMap());
+  auto job_sizes = par_parser.parseNamedCustomOption("eg").AsVector();
+  auto n_threads = par_parser.parseNamedCustomOption("th").AsInt32();
+  TFLITE_DCHECK_EQ(n_threads, job_sizes.size());
+
+  // in this op we have one job per thread
+  op_data->threads.allocate(context, n_threads);
+  int start_idx = 0;
+  for (int j{0}; j < n_threads; j++) {
+    auto job_size = job_sizes[j].AsInt32();
+    op_data->threads.append({start_idx, job_size, &op_data->args});
+    start_idx = start_idx + job_size;
+  }
+
+  return op_data;
 }
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 3);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
-  const TfLiteTensor* bss = GetInput(context, node, 2);
+  auto* op_data = reinterpret_cast<AddOpData*>(node->user_data);
 
-  AddOpData* op = reinterpret_cast<AddOpData*>(node->user_data);
-
-  op->params.input[0].shr = bss->data.i32[0];
-  op->params.input[0].multiplier = bss->data.i32[1];
-  op->params.input[1].shr = bss->data.i32[2];
-  op->params.input[1].multiplier = bss->data.i32[3];
-  op->params.output.bias = bss->data.i32[4];
-  op->params.output.shr = bss->data.i32[5];
+  // TODO: memory map this instead
+  const auto* bss = GetInput(context, node, 2);
+  auto& params = op_data->args.params;
+  params.input[0].shr = bss->data.i32[0];
+  params.input[0].multiplier = bss->data.i32[1];
+  params.input[1].shr = bss->data.i32[2];
+  params.input[1].multiplier = bss->data.i32[3];
+  params.output.bias = bss->data.i32[4];
+  params.output.shr = bss->data.i32[5];
 
   // allocate the stack for thread workers
-  GET_THREAD_FUNCTION_STACKSIZE(op->stack_size, add_thread_worker);
+  GET_THREAD_FUNCTION_STACKSIZE(op_data->stack_size, add_thread_worker);
   TF_LITE_ENSURE_STATUS(context->RequestScratchBufferInArena(
-      context, op->stack_size * 1, &op->stack_scratch_index));
-  // context, op->stack_size * op->execution_plan.GetNumThreads(),
-  // &op->stack_scratch_index));
+      context, op_data->stack_size * op_data->threads.size(),
+      &op_data->stack_scratch_index));
 
   return kTfLiteOk;
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  const TfLiteEvalTensor* input0 =
-      tflite::micro::GetEvalInput(context, node, 0);
-  const TfLiteEvalTensor* input1 =
-      tflite::micro::GetEvalInput(context, node, 1);
-  TfLiteEvalTensor* output = tflite::micro::GetEvalOutput(context, node, 0);
-  const RuntimeShape output_shape = tflite::micro::GetTensorShape(output);
+  auto* op_data = reinterpret_cast<AddOpData*>(node->user_data);
 
-  AddOpData* op = reinterpret_cast<AddOpData*>(node->user_data);
+  op_data->args.X0 = tflite::micro::GetTensorData<int8_t>(
+      tflite::micro::GetEvalInput(context, node, 0));
+  op_data->args.X1 = tflite::micro::GetTensorData<int8_t>(
+      tflite::micro::GetEvalInput(context, node, 1));
+  op_data->args.Y = tflite::micro::GetTensorData<int8_t>(
+      tflite::micro::GetEvalOutput(context, node, 0));
+
   Dispatcher* dispatcher = GetDispatcher();
 
   // initialize the dispatcher
-  char* stack = static_cast<char*>(
-      context->GetScratchBuffer(context, op->stack_scratch_index));
-  TFLITE_DCHECK(stack != nullptr);
-  dispatcher->InitializeTasks(add_thread_worker, stack, op->stack_size);
+  auto* stack = static_cast<char*>(
+      context->GetScratchBuffer(context, op_data->stack_scratch_index));
+  TF_LITE_ENSURE(context, stack);
+  dispatcher->InitializeTasks(add_thread_worker, stack, op_data->stack_size);
 
-  // create thread data
-  int n_th = 1;
-  // int n_th = op->execution_plan.GetNumThreads();
-  AddThreadData thread_data[n_th];
-
-  // create tasks
-  // for (int i_sl = 0; i_sl < op->execution_plan.slices.GetSize(); i_sl++) {
-  //   const Slice& slice = op->execution_plan.slices[i_sl];
-  //   thread_data[i_sl].Y = output->data.int8;
-  //   thread_data[i_sl].X0 = input0->data.int8;
-  //   thread_data[i_sl].X1 = input1->data.int8;
-  //   thread_data[i_sl].params = &op->params;
-  //   thread_data[i_sl].start = slice.start;
-  //   thread_data[i_sl].count = slice.size;
-
-  //   dispatcher->AddTask(reinterpret_cast<void*>(&thread_data[i_sl]));
-  // }
-
-  // create 1 task for now
-  thread_data[0].Y = tflite::micro::GetTensorData<int8_t>(output);
-  thread_data[0].X0 = tflite::micro::GetTensorData<int8_t>(input0);
-  thread_data[0].X1 = tflite::micro::GetTensorData<int8_t>(input1);
-  thread_data[0].params = &op->params;
-  thread_data[0].start = 0;
-  thread_data[0].count = output_shape.FlatSize();
-
-  dispatcher->AddTask(reinterpret_cast<void*>(&thread_data[0]));
-
-  // start and wait for tasks to complete
+  for (auto& thread : op_data->threads) {
+    dispatcher->AddTask(reinterpret_cast<void*>(&thread));
+  }
   dispatcher->JoinTasks();
 
   return kTfLiteOk;

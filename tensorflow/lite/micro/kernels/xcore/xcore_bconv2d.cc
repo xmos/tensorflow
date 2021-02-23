@@ -52,7 +52,9 @@ struct BConv2DArguments {
 
 struct BConv2DThreadData {
   // TODO: change this when new dispatcher is rolled out
-  const RowColRegion *job;  // This describes the region that that thread will process
+
+  // This describes the region that that thread will process
+  const RowColRegion *job;
   int thread_scratch_idx = -1;
   bnn_b32_t *thread_scratch;  // size should be K_h * K_w * C_in / 32 + 8
   const BConv2DArguments *args;
@@ -118,7 +120,7 @@ struct BConv2DOpData {
   PersistentArray<RowColRegion> jobs;
 
   // The amount of stack required to run all thread workers
-  size_t stack_size = 0;
+  size_t stack_size;
   int stack_scratch_index = -1;  // The buffer index where the above stack will
                                  // be allocated
 

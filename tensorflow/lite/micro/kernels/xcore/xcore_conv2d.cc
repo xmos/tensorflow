@@ -35,7 +35,7 @@ struct Conv2DOpData {
   Conv2DParams params;
   ExecutionPlan execution_plan;
   int stack_scratch_index = -1;
-  size_t stack_size = 0;
+  size_t stack_size;
   int weights_scratch_index = -1;
   int bias_scratch_index = -1;
 };
