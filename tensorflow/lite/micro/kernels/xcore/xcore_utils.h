@@ -68,6 +68,28 @@ static inline TfLiteStatus request_scratch_if_needed(TfLiteContext *context,
 }
 
 template <typename T>
+static inline TfLiteStatus fetch_scratch_if_needed(
+    TfLiteContext *context, T *&array, const TfLiteEvalTensor *tensor,
+    int scratch_idx) {
+  if (scratch_idx >= 0) {
+    array =
+        static_cast<const T *>(context->GetScratchBuffer(context, scratch_idx));
+    const RuntimeShape shape = tflite::micro::GetTensorShape(tensor);
+
+    size_t sizeof_tensor_type;
+    GetSizeOfType(context, tensor->type, &sizeof_tensor_type);
+
+    GetDispatcher()->FetchBuffer((int8_t **)&array,
+                                 tflite::micro::GetTensorData<int8_t>(tensor),
+                                 shape.FlatSize() * sizeof_tensor_type);
+  } else {
+    array = tflite::micro::GetTensorData<T>(tensor);
+  }
+  TF_LITE_ENSURE(context, array);
+  return kTfLiteOk;
+}
+
+template <typename T>
 class PersistentArray {
  private:
   size_t max_size_ = 0;

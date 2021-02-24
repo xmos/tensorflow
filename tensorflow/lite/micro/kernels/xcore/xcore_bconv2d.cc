@@ -300,28 +300,6 @@ TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
   return kTfLiteOk;
 }
 
-template <typename T>
-static inline TfLiteStatus fetch_scratch_if_needed(
-    TfLiteContext *context, T *&array, const TfLiteEvalTensor *tensor,
-    int scratch_idx) {
-  if (scratch_idx >= 0) {
-    array =
-        static_cast<const T *>(context->GetScratchBuffer(context, scratch_idx));
-    const RuntimeShape shape = tflite::micro::GetTensorShape(tensor);
-
-    size_t sizeof_tensor_type;
-    GetSizeOfType(context, tensor->type, &sizeof_tensor_type);
-
-    GetDispatcher()->FetchBuffer((int8_t **)&array,
-                                 tflite::micro::GetTensorData<int8_t>(tensor),
-                                 shape.FlatSize() * sizeof_tensor_type);
-  } else {
-    array = tflite::micro::GetTensorData<T>(tensor);
-  }
-  TF_LITE_ENSURE(context, array);
-  return kTfLiteOk;
-}
-
 TfLiteStatus EvalCommon(TfLiteContext *context, TfLiteNode *node) {
   auto *op_data = reinterpret_cast<BConv2DOpData *>(node->user_data);
   op_data->args.X = tflite::micro::GetTensorData<bnn_b32_t>(
