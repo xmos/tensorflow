@@ -14,14 +14,6 @@ namespace ops {
 namespace micro {
 namespace xcore {
 
-// Default implementation.  Application can provide an alternative,
-//  more sophisticated implementation that supports SwMem and ExtMem
-// __attribute__((weak)) void memload(void *dest, void *src, size_t size) {
-//   // printf("memload dest=%d   src=%d   size=%d\n", (long)dest, (long)src,
-//   // size);
-//   memcpy(dest, src, size);
-// }
-
 static Dispatcher *kDispatcher = nullptr;
 
 void SetDispatcher(Dispatcher *dispatcher) { kDispatcher = dispatcher; }
@@ -157,16 +149,6 @@ TfLiteStatus Dispatcher::AddTask(void *argument) {
   }
 
   return kTfLiteError;
-}
-
-size_t Dispatcher::FetchBuffer(int8_t **dest, int8_t const *src, size_t size) {
-  if (is_ram_address((uintptr_t)src)) {
-    *dest = (int8_t *)src;
-    return 0;
-  } else {
-    memload((void *)*dest, (void *)src, size);
-    return size;
-  }
 }
 
 }  // namespace xcore

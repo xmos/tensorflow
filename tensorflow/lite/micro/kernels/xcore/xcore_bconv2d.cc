@@ -52,7 +52,9 @@ struct BConv2DArguments {
 
 struct BConv2DThreadData {
   // TODO: change this when new dispatcher is rolled out
-  const RowColRegion *job;  // This describes the region that that thread will process
+
+  // This describes the region that that thread will process
+  const RowColRegion *job;
   int thread_scratch_idx = -1;
   bnn_b32_t *thread_scratch;  // size should be K_h * K_w * C_in / 32 + 8
   const BConv2DArguments *args;
@@ -118,7 +120,7 @@ struct BConv2DOpData {
   PersistentArray<RowColRegion> jobs;
 
   // The amount of stack required to run all thread workers
-  size_t stack_size = 0;
+  size_t stack_size;
   int stack_scratch_index = -1;  // The buffer index where the above stack will
                                  // be allocated
 
@@ -295,28 +297,6 @@ TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
     }
   }
 
-  return kTfLiteOk;
-}
-
-template <typename T>
-static inline TfLiteStatus fetch_scratch_if_needed(
-    TfLiteContext *context, T *&array, const TfLiteEvalTensor *tensor,
-    int scratch_idx) {
-  if (scratch_idx >= 0) {
-    array =
-        static_cast<const T *>(context->GetScratchBuffer(context, scratch_idx));
-    const RuntimeShape shape = tflite::micro::GetTensorShape(tensor);
-
-    size_t sizeof_tensor_type;
-    GetSizeOfType(context, tensor->type, &sizeof_tensor_type);
-
-    GetDispatcher()->FetchBuffer((int8_t **)&array,
-                                 tflite::micro::GetTensorData<int8_t>(tensor),
-                                 shape.FlatSize() * sizeof_tensor_type);
-  } else {
-    array = tflite::micro::GetTensorData<T>(tensor);
-  }
-  TF_LITE_ENSURE(context, array);
   return kTfLiteOk;
 }
 

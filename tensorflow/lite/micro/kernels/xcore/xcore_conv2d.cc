@@ -35,7 +35,7 @@ struct Conv2DOpData {
   Conv2DParams params;
   ExecutionPlan execution_plan;
   int stack_scratch_index = -1;
-  size_t stack_size = 0;
+  size_t stack_size;
   int weights_scratch_index = -1;
   int bias_scratch_index = -1;
 };
@@ -251,14 +251,12 @@ static void fetch_depthwise_subtensor(int8_t *dest, const nn_tensor_t *weights,
   assert(start_channel % 16 == 0);
   assert(channel_count % 4 == 0);
 
-  Dispatcher *dispatcher = GetDispatcher();
-
   weights =
       &(weights[start_channel]);  // Address of weights[0][0][start_channel]
 
   // Total of K_h * K_w blocks, for a total of K_h*K_w*channel_count bytes
   for (int k = 0; k < K_h * K_w; k++) {
-    dispatcher->FetchBuffer(&dest, weights, channel_count);
+    FetchBuffer(&dest, weights, channel_count);
     // memcpy(dest, weights, channel_count);
     dest = &(dest[channel_count]);
     weights = &(weights[X_c]);
@@ -321,20 +319,17 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
                                   channel_size, changrp.start, changrp.size);
       }
       if (op_data->bias_scratch_index >= 0) {
-        dispatcher->FetchBuffer((int8_t **)&op_data->args.BSO,
-                                &bso_src_array[biases_src_offset],
-                                kBSOChannelGroupBytes);
+        FetchBuffer((int8_t **)&op_data->args.BSO,
+                    &bso_src_array[biases_src_offset], kBSOChannelGroupBytes);
         biases_src_offset += kBSOChannelGroupBytes;
       }
     } else {
       size_t weights_fetch_size = channel_size * changrp.size;
-      dispatcher->FetchBuffer((int8_t **)&op_data->args.K,
-                              &weights_src_array[weights_src_offset],
-                              weights_fetch_size);
+      FetchBuffer((int8_t **)&op_data->args.K,
+                  &weights_src_array[weights_src_offset], weights_fetch_size);
       weights_src_offset += weights_fetch_size;
-      dispatcher->FetchBuffer((int8_t **)&op_data->args.BSO,
-                              &bso_src_array[biases_src_offset],
-                              kBSOChannelGroupBytes);
+      FetchBuffer((int8_t **)&op_data->args.BSO,
+                  &bso_src_array[biases_src_offset], kBSOChannelGroupBytes);
       biases_src_offset += kBSOChannelGroupBytes;
     }
 

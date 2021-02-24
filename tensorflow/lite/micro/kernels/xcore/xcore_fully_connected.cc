@@ -4,6 +4,7 @@
 #include "tensorflow/lite/micro/kernels/kernel_util.h"
 #include "tensorflow/lite/micro/kernels/xcore/xcore_custom_options.h"
 #include "tensorflow/lite/micro/kernels/xcore/xcore_dispatcher.h"
+#include "tensorflow/lite/micro/kernels/xcore/xcore_utils.h"
 
 extern "C" {
 #include "lib_nn/api/nn_operator.h"
@@ -151,16 +152,15 @@ TfLiteStatus Eval_8(TfLiteContext* context, TfLiteNode* node) {
 
     // fetch the weights and biases
     weights_fetch_size = C_in * changrp.size;
-    dispatcher->FetchBuffer(
+    FetchBuffer(
         &tW, &tflite::micro::GetTensorData<int8_t>(weights)[weights_src_offset],
         weights_fetch_size);
     weights_dest_offset += weights_fetch_size;
     weights_src_offset += weights_fetch_size;
 
-    dispatcher->FetchBuffer(
-        (int8_t**)&tBSO,
-        &tflite::micro::GetTensorData<int8_t>(bso)[biases_src_offset],
-        kBSOChannelGroupBytes);
+    FetchBuffer((int8_t**)&tBSO,
+                &tflite::micro::GetTensorData<int8_t>(bso)[biases_src_offset],
+                kBSOChannelGroupBytes);
     biases_dest_offset += kBSOChannelGroupBytes;
     biases_src_offset += kBSOChannelGroupBytes;
 

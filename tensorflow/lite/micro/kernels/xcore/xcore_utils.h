@@ -6,6 +6,7 @@
 #include <utility>
 
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/micro/kernels/kernel_util.h"
 
 namespace tflite {
 namespace ops {
@@ -65,6 +66,37 @@ static inline TfLiteStatus request_scratch_if_needed(TfLiteContext *context,
                                                      int &scratch_idx) {
   return request_scratch_if_needed(context, tensor->data.data, tensor->bytes,
                                    scratch_idx);
+}
+
+extern "C" {
+static inline void memload(void *dest, void *src, size_t size) {
+  // printf("memload dest=%d   src=%d   size=%d\n", (long)dest, (long)src,
+  // size);
+  memcpy(dest, src, size);
+}
+}
+
+size_t FetchBuffer(int8_t **dest, int8_t const *src, size_t size);
+
+template <typename T>
+static inline TfLiteStatus fetch_scratch_if_needed(
+    TfLiteContext *context, T *&array, const TfLiteEvalTensor *tensor,
+    int scratch_idx) {
+  if (scratch_idx >= 0) {
+    array =
+        static_cast<const T *>(context->GetScratchBuffer(context, scratch_idx));
+    const RuntimeShape shape = tflite::micro::GetTensorShape(tensor);
+
+    size_t sizeof_tensor_type;
+    GetSizeOfType(context, tensor->type, &sizeof_tensor_type);
+
+    FetchBuffer((int8_t **)&array, tflite::micro::GetTensorData<int8_t>(tensor),
+                shape.FlatSize() * sizeof_tensor_type);
+  } else {
+    array = tflite::micro::GetTensorData<T>(tensor);
+  }
+  TF_LITE_ENSURE(context, array);
+  return kTfLiteOk;
 }
 
 template <typename T>
