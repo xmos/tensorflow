@@ -4,7 +4,6 @@
 #include "tensorflow/lite/micro/kernels/kernel_util.h"
 #include "tensorflow/lite/micro/kernels/xcore/xcore_dispatcher.h"
 #include "tensorflow/lite/micro/kernels/xcore/xcore_elementwise.h"
-#include "tensorflow/lite/micro/kernels/xcore/xcore_ops.h"
 #include "tensorflow/lite/micro/kernels/xcore/xcore_utils.h"
 
 extern "C" {
@@ -21,7 +20,7 @@ namespace add {
 // kernel argument type
 // -------------------------------------------------------------------- //
 
-struct BConv2DArguments {
+struct AddArguments {
   int8_t* Y;
   const int8_t* X0;
   const int8_t* X1;
@@ -31,11 +30,7 @@ struct BConv2DArguments {
 // -------------------------------------------------------------------- //
 // thread data type and worker functions
 // -------------------------------------------------------------------- //
-struct AddThreadData {
-  int32_t start;
-  int32_t element_count;
-  const BConv2DArguments* args;
-};
+using AddThreadData = ElementwiseThreadData<AddArguments>;
 
 extern "C" {
 ATTRIBUTE_THREAD_FUNCTION void add_thread_worker(void* context) {
@@ -50,11 +45,7 @@ ATTRIBUTE_THREAD_FUNCTION void add_thread_worker(void* context) {
 // op data types
 // -------------------------------------------------------------------- //
 
-struct AddOpData {
-  BConv2DArguments args;
-  PersistentArray<AddThreadData> threads;
-  int stack_scratch_index = -1;
-  size_t stack_size;
+struct AddOpData : MultiThreadedOpData<AddArguments, AddThreadData> {
   // TODO: remove this when better external memory handling is implemented
   // for loading from external mem
   int input0_scratch_idx = -1;
@@ -87,6 +78,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       context, op_data->stack_size * op_data->threads.size(),
       &op_data->stack_scratch_index));
 
+  // TODO: remove this when better fetching is implemented
   TF_LITE_ENSURE_STATUS(request_scratch_if_needed(
       context, GetInput(context, node, 0), op_data->input0_scratch_idx));
   TF_LITE_ENSURE_STATUS(request_scratch_if_needed(
@@ -107,9 +99,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   op_data->args.Y = tflite::micro::GetTensorData<int8_t>(
       tflite::micro::GetEvalOutput(context, node, 0));
 
-  Dispatcher* dispatcher = GetDispatcher();
-
   // initialize the dispatcher
+  Dispatcher* dispatcher = GetDispatcher();
   auto* stack = static_cast<char*>(
       context->GetScratchBuffer(context, op_data->stack_scratch_index));
   TF_LITE_ENSURE(context, stack);

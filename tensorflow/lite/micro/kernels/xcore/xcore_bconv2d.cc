@@ -109,20 +109,10 @@ ATTRIBUTE_THREAD_FUNCTION void bconv2d_int8_thread_worker(void *context) {
 // op data types
 // -------------------------------------------------------------------- //
 
-struct BConv2DOpData {
-  // Data that is args to all threads processing the bconv2d
-  BConv2DArguments args;
-
-  // dedicated BConv2DThreadData for each thread
-  PersistentArray<BConv2DThreadData> threads;
-
-  // The the jobs (regions) threads will have to process.
+struct BConv2DOpData
+    : MultiThreadedOpData<BConv2DArguments, BConv2DThreadData> {
+  // The jobs (regions) threads will have to process.
   PersistentArray<RowColRegion> jobs;
-
-  // The amount of stack required to run all thread workers
-  size_t stack_size;
-  int stack_scratch_index = -1;  // The buffer index where the above stack will
-                                 // be allocated
 
   // TODO: remove this when better external memory handling is implemented
   // for loading from external mem

@@ -1,6 +1,7 @@
 #ifndef XCORE_OPS_H_
 #define XCORE_OPS_H_
 
+#include "tensorflow/lite/micro/kernels/xcore/xcore_utils.h"
 #include "tensorflow/lite/micro/micro_mutable_op_resolver.h"
 
 namespace tflite {
@@ -52,6 +53,14 @@ struct Conv2DParams {
   int32_t stride_h;
   int32_t stride_w;
   Conv2DPadding pad;
+};
+
+template <typename TArgs, typename TThreadData>
+struct MultiThreadedOpData {
+  TArgs args;
+  PersistentArray<TThreadData> threads;
+  int stack_scratch_index = -1;
+  size_t stack_size;
 };
 
 TfLiteRegistration* Register_Conv2D_Shallow();

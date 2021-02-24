@@ -10,12 +10,19 @@ namespace ops {
 namespace micro {
 namespace xcore {
 
-template <typename TOpData>
+template <typename TArgs>
+struct ElementwiseThreadData {
+  int32_t start;
+  int32_t element_count;
+  const TArgs* args;
+};
+
+template <typename TMultiThreadedOpData>
 void* ElementwiseInit(TfLiteContext* context, const char* buffer,
                       size_t length) {
   auto job_sizes =
       CustomOptionParser(buffer, length).parseElementwiseJobSizes();
-  auto* op_data = construct_persistent_object<TOpData>(context);
+  auto* op_data = construct_persistent_object<TMultiThreadedOpData>(context);
 
   // in this op we have one job per thread
   auto n_threads = job_sizes.size();
