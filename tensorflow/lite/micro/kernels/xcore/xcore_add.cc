@@ -55,6 +55,10 @@ struct AddOpData {
   PersistentArray<AddThreadData> threads;
   int stack_scratch_index = -1;
   size_t stack_size;
+  // TODO: remove this when better external memory handling is implemented
+  // for loading from external mem
+  int input0_scratch_idx = -1;
+  int input1_scratch_idx = -1;
 };
 
 // -------------------------------------------------------------------- //
@@ -104,16 +108,23 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       context, op_data->stack_size * op_data->threads.size(),
       &op_data->stack_scratch_index));
 
+  TF_LITE_ENSURE_STATUS(request_scratch_if_needed(
+      context, GetInput(context, node, 0), op_data->input0_scratch_idx));
+  TF_LITE_ENSURE_STATUS(request_scratch_if_needed(
+      context, GetInput(context, node, 1), op_data->input1_scratch_idx));
+
   return kTfLiteOk;
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   auto* op_data = reinterpret_cast<AddOpData*>(node->user_data);
 
-  op_data->args.X0 = tflite::micro::GetTensorData<int8_t>(
-      tflite::micro::GetEvalInput(context, node, 0));
-  op_data->args.X1 = tflite::micro::GetTensorData<int8_t>(
-      tflite::micro::GetEvalInput(context, node, 1));
+  TF_LITE_ENSURE_STATUS(fetch_scratch_if_needed(
+      context, op_data->args.X0, tflite::micro::GetEvalInput(context, node, 0),
+      op_data->input0_scratch_idx));
+  TF_LITE_ENSURE_STATUS(fetch_scratch_if_needed(
+      context, op_data->args.X1, tflite::micro::GetEvalInput(context, node, 1),
+      op_data->input1_scratch_idx));
   op_data->args.Y = tflite::micro::GetTensorData<int8_t>(
       tflite::micro::GetEvalOutput(context, node, 0));
 
