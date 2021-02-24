@@ -8,10 +8,6 @@
 #include "tensorflow/lite/micro/kernels/xcore/xcore_planning.h"
 #include "tensorflow/lite/micro/micro_error_reporter.h"
 
-extern "C" {
-void memload(void *dest, void *src, size_t size);
-}
-
 #ifdef XCORE
 extern "C" {
 #ifdef _TIME_H_
@@ -76,8 +72,6 @@ class Dispatcher {
   TfLiteStatus Reset();
 
   tflite::ErrorReporter *GetReporter();
-
-  size_t FetchBuffer(int8_t **dest, int8_t const *src, size_t size);
 
  private:
   bool use_current_thread_;

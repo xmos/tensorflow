@@ -62,6 +62,16 @@ TfLiteStatus GetSizeOfType(TfLiteContext *context, const TfLiteType type,
   return kTfLiteOk;
 }
 
+size_t FetchBuffer(int8_t **dest, int8_t const *src, size_t size) {
+  if (is_ram_address((uintptr_t)src)) {
+    *dest = (int8_t *)src;
+    return 0;
+  } else {
+    memload((void *)*dest, (void *)src, size);
+    return size;
+  }
+}
+
 }  // namespace xcore
 }  // namespace micro
 }  // namespace ops
