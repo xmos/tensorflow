@@ -55,7 +55,7 @@ static inline TfLiteStatus request_scratch_if_needed(TfLiteContext *context,
                                                      const void *source_address,
                                                      const size_t size,
                                                      int &scratch_idx) {
-  if (!is_ram_address((uintptr_t)source_address)) {
+  if (source_address && !is_ram_address((uintptr_t)source_address)) {
     return context->RequestScratchBufferInArena(context, size, &scratch_idx);
   }
   return kTfLiteOk;
