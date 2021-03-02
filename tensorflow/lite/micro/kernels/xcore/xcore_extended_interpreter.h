@@ -5,6 +5,7 @@
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/micro/kernels/xcore/xcore_interpreter.h"
+#include "tensorflow/lite/micro/kernels/xcore/xcore_profiler.h"
 
 namespace tflite {
 namespace micro {
@@ -48,14 +49,14 @@ class ExtendedXCoreInterpreter : public XCoreInterpreter {
                            uint8_t* arena, size_t arena_size,
                            tflite::ErrorReporter* reporter,
                            bool use_current_thread = true,
-                           tflite::MicroProfiler* profiler = nullptr);
+                           XCoreProfiler* profiler = nullptr);
 
   ExtendedXCoreInterpreter(const tflite::Model* model,
                            const tflite::MicroOpResolver& resolver,
                            tflite::MicroAllocator* allocator,
                            tflite::ErrorReporter* reporter,
                            bool use_current_thread = true,
-                           tflite::MicroProfiler* profiler = nullptr);
+                           XCoreProfiler* profiler = nullptr);
 
   size_t input_tensor_index(size_t input_index);
   size_t output_tensor_index(size_t output_index);
