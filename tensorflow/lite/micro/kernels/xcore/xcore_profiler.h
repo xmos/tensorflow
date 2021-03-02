@@ -4,10 +4,11 @@
 #define XCORE_PROFILER_H_
 
 #include "tensorflow/lite/micro/compatibility.h"
+#include "tensorflow/lite/micro/micro_allocator.h"
 #include "tensorflow/lite/micro/micro_profiler.h"
 
-#if !defined(XCORE_PROFILER_MAX_LEVELS)
-#define XCORE_PROFILER_MAX_LEVELS (64)
+#if !defined(XCORE_PROFILER_DEFAULT_MAX_LEVELS)
+#define XCORE_PROFILER_DEFAULT_MAX_LEVELS (64)
 #endif
 
 namespace tflite {
@@ -16,8 +17,11 @@ namespace xcore {
 
 class XCoreProfiler : public tflite::MicroProfiler {
  public:
-  explicit XCoreProfiler();
+  explicit XCoreProfiler(){};
   ~XCoreProfiler() override = default;
+
+  void Init(tflite::MicroAllocator* allocator,
+            size_t max_event_count = XCORE_PROFILER_DEFAULT_MAX_LEVELS);
 
   uint32_t BeginEvent(const char* tag) override;
 
@@ -25,13 +29,14 @@ class XCoreProfiler : public tflite::MicroProfiler {
   void EndEvent(uint32_t event_handle) override;
 
   uint32_t const* GetEventDurations();
-  uint32_t GetNumEvents();
+  size_t GetNumEvents();
 
  private:
   const char* event_tag_;
   uint32_t event_start_time_;
-  uint32_t event_count_;
-  uint32_t event_durations_[XCORE_PROFILER_MAX_LEVELS];
+  size_t event_count_ = 0;
+  size_t max_event_count_ = 0;
+  uint32_t* event_durations_;
   TF_LITE_REMOVE_VIRTUAL_DELETE
 };
 
