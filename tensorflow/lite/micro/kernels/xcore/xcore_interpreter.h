@@ -3,9 +3,9 @@
 #define XCORE_INTERPRETER_H_
 
 #include "tensorflow/lite/micro/kernels/xcore/xcore_dispatcher.h"
+#include "tensorflow/lite/micro/kernels/xcore/xcore_profiler.h"
 #include "tensorflow/lite/micro/micro_allocator.h"
 #include "tensorflow/lite/micro/micro_interpreter.h"
-#include "tensorflow/lite/micro/micro_profiler.h"
 
 namespace tflite {
 namespace micro {
@@ -17,14 +17,16 @@ class XCoreInterpreter : public tflite::MicroInterpreter {
                    const tflite::MicroOpResolver& resolver, uint8_t* arena,
                    size_t arena_size, tflite::ErrorReporter* reporter,
                    bool use_curent_thread = true,
-                   tflite::MicroProfiler* profiler = nullptr);
+                   XCoreProfiler* profiler = nullptr);
 
   XCoreInterpreter(const tflite::Model* model,
                    const tflite::MicroOpResolver& resolver,
                    tflite::MicroAllocator* allocator,
                    tflite::ErrorReporter* reporter,
                    bool use_current_thread = true,
-                   tflite::MicroProfiler* profiler = nullptr);
+                   XCoreProfiler* profiler = nullptr);
+
+  TfLiteTensor* tensor(size_t tensor_index);
 
  private:
   tflite::ops::micro::xcore::Dispatcher dispatcher_;

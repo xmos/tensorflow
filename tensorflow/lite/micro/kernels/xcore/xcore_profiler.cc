@@ -8,27 +8,31 @@ namespace tflite {
 namespace micro {
 namespace xcore {
 
-XCoreProfiler::XCoreProfiler() : event_count_(0) {}
+void XCoreProfiler::Init(tflite::MicroAllocator* allocator,
+                         size_t max_event_count) {
+  max_event_count_ = max_event_count;
+  event_durations_ = static_cast<uint32_t*>(
+      allocator->AllocatePersistentBuffer(max_event_count * sizeof(uint32_t)));
+}
 
 uint32_t const* XCoreProfiler::GetEventDurations() { return event_durations_; }
 
-uint32_t XCoreProfiler::GetNumEvents() { return event_count_; }
+size_t XCoreProfiler::GetNumEvents() { return event_count_; }
+
+void XCoreProfiler::ClearEvents() { event_count_ = 0; }
 
 uint32_t XCoreProfiler::BeginEvent(const char* tag) {
-  event_start_time_ = tflite::GetCurrentTimeTicks();
-  TFLITE_DCHECK(tag != nullptr);
+  TFLITE_DCHECK(tag);
   event_tag_ = tag;
+  event_start_time_ = tflite::GetCurrentTimeTicks();
   return 0;
 }
 
 void XCoreProfiler::EndEvent(uint32_t event_handle) {
-  uint32_t event_duration;
   int32_t event_end_time = tflite::GetCurrentTimeTicks();
-  event_duration = event_end_time - event_start_time_;
-  if (event_count_ < XCORE_PROFILER_MAX_LEVELS) {
-    event_durations_[event_count_] = event_duration;
-    event_count_++;
-  }
+  event_count_ = event_count_ % max_event_count_;
+  // wrap if there are too many events
+  event_durations_[event_count_++] = event_end_time - event_start_time_;
 }
 
 }  // namespace xcore
