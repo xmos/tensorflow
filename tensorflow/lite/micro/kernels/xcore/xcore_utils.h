@@ -75,7 +75,11 @@ static inline TfLiteStatus request_scratch_if_needed(TfLiteContext *context,
 extern "C" {
 static inline void memload(void *dest, void *src, size_t size) {
   // TODO: consider using different implementations for flash/DDR
-  vpu_memcpy(dest, src, size);
+  if (size >= 128) {
+    vpu_memcpy(dest, src, size);
+  } else {
+    memcpy(dest, src, size);
+  }
 }
 }
 
