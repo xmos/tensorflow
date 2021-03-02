@@ -23,6 +23,8 @@ class XCoreProfiler : public tflite::MicroProfiler {
   void Init(tflite::MicroAllocator* allocator,
             size_t max_event_count = XCORE_PROFILER_DEFAULT_MAX_LEVELS);
 
+  void ClearEvents();
+
   uint32_t BeginEvent(const char* tag) override;
 
   // Event_handle is ignored since TFLu does not support concurrent events.

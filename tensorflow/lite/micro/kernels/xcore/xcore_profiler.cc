@@ -19,6 +19,8 @@ uint32_t const* XCoreProfiler::GetEventDurations() { return event_durations_; }
 
 size_t XCoreProfiler::GetNumEvents() { return event_count_; }
 
+void XCoreProfiler::ClearEvents() { event_count_ = 0; }
+
 uint32_t XCoreProfiler::BeginEvent(const char* tag) {
   TFLITE_DCHECK(tag);
   event_tag_ = tag;
