@@ -30,11 +30,6 @@ namespace tflite {
 
 int32_t ticks_per_second() { return PLATFORM_REFERENCE_HZ; }
 
-int32_t GetCurrentTimeTicks() {
-  hwtimer_t hwtimer = hwtimer_alloc();
-  int32_t ticks = hwtimer_get_time(hwtimer);
-  hwtimer_free(hwtimer);
-  return ticks;
-}
+int32_t GetCurrentTimeTicks() { return get_reference_time(); }
 
 }  // namespace tflite
