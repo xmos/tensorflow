@@ -8,6 +8,10 @@
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/micro/kernels/kernel_util.h"
 
+extern "C" {
+#include "lib_nn/api/nn_op_utils.h"
+}
+
 namespace tflite {
 namespace ops {
 namespace micro {
@@ -70,9 +74,12 @@ static inline TfLiteStatus request_scratch_if_needed(TfLiteContext *context,
 
 extern "C" {
 static inline void memload(void *dest, void *src, size_t size) {
-  // printf("memload dest=%d   src=%d   size=%d\n", (long)dest, (long)src,
-  // size);
-  memcpy(dest, src, size);
+  // TODO: consider using different implementations for flash/DDR
+  if (size >= 128) {
+    vpu_memcpy(dest, src, size);
+  } else {
+    memcpy(dest, src, size);
+  }
 }
 }
 
