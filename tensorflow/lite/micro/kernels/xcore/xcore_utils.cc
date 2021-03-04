@@ -3,7 +3,7 @@
 #include <complex>
 
 extern "C" {
-#include "lib_nn/api/nn_op_utils.h"
+#include "nn_op_utils.h"
 }
 
 namespace tflite {

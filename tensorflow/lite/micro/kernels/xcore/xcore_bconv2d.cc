@@ -9,7 +9,7 @@
 #include "tensorflow/lite/micro/kernels/xcore/xcore_utils.h"
 
 extern "C" {
-#include "lib_nn/api/nn_operator.h"
+#include "nn_operator.h"
 }
 
 namespace tflite {
