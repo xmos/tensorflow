@@ -69,7 +69,7 @@ TfLiteStatus GetSizeOfType(TfLiteContext *context, const TfLiteType type,
 static inline void memload(void *dest, void *src, size_t size) {
   // TODO: consider using different implementations for flash/DDR
   if (size >= 128) {
-    vpu_memcpy(dest, src, size);
+    vpu_memcpy_ext(dest, src, size);
   } else {
     memcpy(dest, src, size);
   }
