@@ -148,13 +148,32 @@ struct Conv2DKernel {
 // op function implementations
 // -------------------------------------------------------------------- //
 
-void *Init(TfLiteContext *context, const char *buffer, size_t length) {
+void *InitCommon(TfLiteContext *context, const char *buffer, size_t length) {
   auto *op_data = construct_persistent_object<Conv2DOpData>(context);
 
   // parse custom options
   TFLITE_DCHECK(buffer != nullptr);
-  parse_custom_options(context, buffer, length, op_data->params,
-                       &op_data->execution_plan);
+  parse_custom_options(context, buffer, length, &op_data->execution_plan);  // TODO deprecate this
+
+  return op_data;
+}
+
+void *Init(TfLiteContext *context, const char *buffer, size_t length) {
+  auto *op_data =
+      static_cast<Conv2DOpData *>(InitCommon(context, buffer, length));
+
+  auto parser = CustomOptionParser(buffer, length);
+  auto &stride = op_data->args.window.stride;
+  parser.parseNamedTuple("stride", stride.vertical, stride.horizontal);
+
+  auto &start_offsets = op_data->args.window.start;
+  parser.parseNamedTuple("pad", start_offsets.row, start_offsets.column);
+
+  // TODO: consider templating for kernel types and do this for shallow only
+  auto k_w = parser.parseNamedCustomOption("Kw");
+  if (!k_w.IsNull()) {
+    op_data->args.window.shape.width = k_w.AsInt32();
+  }
 
   return op_data;
 }
@@ -174,7 +193,9 @@ TfLiteStatus PrepareCommon(TfLiteContext *context, TfLiteNode *node) {
                                 op_data->execution_plan.GetBiasScratchSize(),
                                 op_data->bias_scratch_index));
 
-  const auto &input_shape = GetTensorShape(GetInput(context, node, 0));
+  const auto *input = GetInput(context, node, 0);
+  op_data->args.zero_point = input->params.zero_point;
+  const auto &input_shape = GetTensorShape(input);
   op_data->args.x_image = {(uint32_t)input_shape.Dims(1),
                            (uint32_t)input_shape.Dims(2),
                            (uint32_t)input_shape.Dims(3)};
@@ -183,13 +204,6 @@ TfLiteStatus PrepareCommon(TfLiteContext *context, TfLiteNode *node) {
   op_data->args.y_image = {(uint32_t)output_shape.Dims(1),
                            (uint32_t)output_shape.Dims(2),
                            (uint32_t)output_shape.Dims(3)};
-
-  // not used by 1x1
-  op_data->args.window.start = {-op_data->params.pad.top,
-                                -op_data->params.pad.left};
-  op_data->args.window.stride = {op_data->params.stride_h,
-                                 op_data->params.stride_w};
-  op_data->args.zero_point = op_data->params.pad.zero_point;
 
   return kTfLiteOk;
 }
@@ -210,8 +224,8 @@ TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
   if (kernel_type == Conv2DKernelType::kOneByOne) {
     op_data->args.window.shape = {1, 1};
   } else if (kernel_type == Conv2DKernelType::kShallow) {
+    // NOTE: width is already set in init
     op_data->args.window.shape.height = weight_shape.Dims(1);
-    op_data->args.window.shape.width = op_data->params.K_w;
   } else if (kernel_type == Conv2DKernelType::kDepthwise) {
     op_data->args.window.shape.height = weight_shape.Dims(0);
     op_data->args.window.shape.width = weight_shape.Dims(1);
@@ -364,7 +378,8 @@ TfLiteRegistration *Register_Conv2D_Shallow() {
 
 TfLiteRegistration *Register_Conv2D_1x1() {
   static TfLiteRegistration r = {
-      conv::Init, nullptr, conv::Prepare<conv::Conv2DKernelType::kOneByOne>,
+      conv::InitCommon, nullptr,
+      conv::Prepare<conv::Conv2DKernelType::kOneByOne>,
       conv::Eval<conv::Conv2DKernelType::kOneByOne>};
   return &r;
 }
