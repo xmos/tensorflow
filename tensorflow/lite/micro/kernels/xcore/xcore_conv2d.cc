@@ -163,8 +163,8 @@ void *Init(TfLiteContext *context, const char *buffer, size_t length) {
       static_cast<Conv2DOpData *>(InitCommon(context, buffer, length));
 
   auto parser = CustomOptionParser(buffer, length);
-  auto &stride = op_data->args.window.stride;
-  parser.parseNamedTuple("stride", stride.vertical, stride.horizontal);
+  auto &k_stride = op_data->args.window.stride;
+  parser.parseNamedTuple("stride", k_stride.vertical, k_stride.horizontal);
 
   auto &start_offsets = op_data->args.window.start;
   parser.parseNamedTuple("pad", start_offsets.row, start_offsets.column);

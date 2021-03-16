@@ -176,15 +176,13 @@ void *Init(TfLiteContext *context, const char *buffer, size_t length) {
   auto *op_data = construct_persistent_object<BConv2DOpData>(context);
 
   auto parser = CustomOptionParser(buffer, length);
-  auto Kshape = parser.parseNamedCustomOption("K").AsVector();
-  op_data->args.y.channels = Kshape[0].AsUInt32();
-  op_data->args.k.shape.height = Kshape[1].AsUInt32();
-  op_data->args.k.shape.width = Kshape[2].AsUInt32();
-  op_data->args.x.channels = Kshape[3].AsUInt32();
 
-  auto strides = parser.parseNamedCustomOption("stride").AsVector();
-  op_data->args.k.stride.vertical = strides[0].AsInt32();
-  op_data->args.k.stride.horizontal = strides[1].AsInt32();
+  auto &k_shape = op_data->args.k.shape;
+  parser.parseNamedTuple("K", op_data->args.y.channels, k_shape.height,
+                         k_shape.width, op_data->args.x.channels);
+
+  auto &k_stride = op_data->args.k.stride;
+  parser.parseNamedTuple("stride", k_stride.vertical, k_stride.horizontal);
 
   // parse parallelization plan
   auto par_parser =
