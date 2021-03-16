@@ -33,8 +33,7 @@ flexbuffers::Reference CustomOptionParser::parseNamedCustomOption(
 }
 
 flexbuffers::Vector CustomOptionParser::parseElementwiseJobSizes() const {
-  auto par_parser =
-      CustomOptionParser(this->parseNamedCustomOption("par").AsMap());
+  auto par_parser = CustomOptionParser(parseNamedCustomOption("par").AsMap());
   auto job_sizes = par_parser.parseNamedCustomOption("eg").AsVector();
   auto n_threads = par_parser.parseNamedCustomOption("th").AsInt32();
   TFLITE_DCHECK_EQ(n_threads, job_sizes.size());  // TODO: remove this check
