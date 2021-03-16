@@ -32,7 +32,6 @@ struct Conv2DArguments {
 
 struct Conv2DOpData {
   Conv2DArguments args;
-  Conv2DParams params;
   ExecutionPlan execution_plan;
   int stack_scratch_index = -1;
   size_t stack_size;
@@ -153,7 +152,8 @@ void *InitCommon(TfLiteContext *context, const char *buffer, size_t length) {
 
   // parse custom options
   TFLITE_DCHECK(buffer != nullptr);
-  parse_custom_options(context, buffer, length, &op_data->execution_plan);  // TODO deprecate this
+  parse_custom_options(context, buffer, length,
+                       &op_data->execution_plan);  // TODO deprecate this
 
   return op_data;
 }

@@ -18,14 +18,9 @@ void parse_custom_options(TfLiteContext *context, const char *buffer,
                           ExecutionPlan *plan = nullptr);
 
 void parse_custom_options(TfLiteContext *context, const char *buffer,
-                          size_t length, Conv2DParams &conv2d_params,
-                          ExecutionPlan *plan = nullptr);
-
-void parse_custom_options(TfLiteContext *context, const char *buffer,
                           size_t length, int32_t *stride_h = nullptr,
                           int32_t *stride_w = nullptr,
                           int32_t *pool_h = nullptr, int32_t *pool_w = nullptr,
-                          int32_t *K_w = nullptr, Conv2DPadding *pad = nullptr,
                           ExecutionPlan *plan = nullptr);
 
 class CustomOptionParser {
