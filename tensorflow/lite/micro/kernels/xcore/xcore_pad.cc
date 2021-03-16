@@ -7,7 +7,7 @@
 #include "tensorflow/lite/micro/memory_helpers.h"
 
 extern "C" {
-#include "lib_nn/api/nn_operator.h"
+#include "nn_operator.h"
 }
 
 namespace tflite {

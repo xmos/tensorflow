@@ -4,7 +4,7 @@
 #include "tensorflow/lite/micro/kernels/kernel_util.h"
 
 extern "C" {
-#include "lib_nn/api/nn_operator.h"
+#include "nn_operator.h"
 }
 
 namespace tflite {
