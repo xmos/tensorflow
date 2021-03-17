@@ -33,8 +33,7 @@ flexbuffers::Reference CustomOptionParser::parseNamedCustomOption(
 }
 
 flexbuffers::Vector CustomOptionParser::parseElementwiseJobSizes() const {
-  auto par_parser =
-      CustomOptionParser(this->parseNamedCustomOption("par").AsMap());
+  auto par_parser = CustomOptionParser(parseNamedCustomOption("par").AsMap());
   auto job_sizes = par_parser.parseNamedCustomOption("eg").AsVector();
   auto n_threads = par_parser.parseNamedCustomOption("th").AsInt32();
   TFLITE_DCHECK_EQ(n_threads, job_sizes.size());  // TODO: remove this check
@@ -47,9 +46,7 @@ flexbuffers::Vector CustomOptionParser::parseElementwiseJobSizes() const {
 void parse_custom_options(TfLiteContext *context, const char *buffer,
                           size_t length, ExecutionPlan *plan) {
   parse_custom_options(context, buffer, length, nullptr, nullptr, nullptr,
-                       nullptr, nullptr, nullptr,
-                       plan  // ExecutionPlan
-  );
+                       nullptr, plan);
 }
 
 //*****************************
@@ -60,24 +57,7 @@ void parse_custom_options(TfLiteContext *context, const char *buffer,
                           ExecutionPlan *plan) {
   parse_custom_options(context, buffer, length, &pooling_params.stride_h,
                        &pooling_params.stride_w, &pooling_params.pool_h,
-                       &pooling_params.pool_w,
-                       nullptr,  // K_w
-                       nullptr,  // pad
-                       plan      // ExecutionPlan
-  );
-}
-
-//*****************************
-// Conv2DParams
-//*****************************
-void parse_custom_options(TfLiteContext *context, const char *buffer,
-                          size_t length, Conv2DParams &conv2d_params,
-                          ExecutionPlan *plan) {
-  parse_custom_options(context, buffer, length, &conv2d_params.stride_h,
-                       &conv2d_params.stride_w,
-                       nullptr,  // pool_h
-                       nullptr,  // pool_w
-                       &conv2d_params.K_w, &conv2d_params.pad, plan);
+                       &pooling_params.pool_w, plan);
 }
 
 //*****************************
@@ -85,8 +65,8 @@ void parse_custom_options(TfLiteContext *context, const char *buffer,
 //*****************************
 void parse_custom_options(TfLiteContext *context, const char *buffer,
                           size_t length, int32_t *stride_h, int32_t *stride_w,
-                          int32_t *pool_h, int32_t *pool_w, int32_t *K_w,
-                          Conv2DPadding *pad, ExecutionPlan *plan) {
+                          int32_t *pool_h, int32_t *pool_w,
+                          ExecutionPlan *plan) {
   const uint8_t *buffer_t = reinterpret_cast<const uint8_t *>(buffer);
   // std::cout << flexbuffers::GetRoot(buffer_t, length).ToString() <<
   // std::endl;
@@ -106,21 +86,11 @@ void parse_custom_options(TfLiteContext *context, const char *buffer,
       if (stride_h) *stride_h = values[i].AsInt32();
     } else if (key.compare("stride_w") == 0) {
       if (stride_w) *stride_w = values[i].AsInt32();
-    } else if (key.compare("Kw") == 0) {
-      if (K_w) *K_w = values[i].AsInt32();
     } else if (key.compare("pool") == 0) {
       const auto &vec =
           values[i].AsVector();  // values represent [pool_h, pool_w]
       if (pool_h) *pool_h = vec[0].AsInt32();
       if (pool_w) *pool_w = vec[1].AsInt32();
-    } else if (key.compare("pad") == 0) {
-      if (pad) {
-        const auto &vec =
-            values[i].AsVector();  // values represent [top, left, zero_point]
-        pad->top = vec[0].AsInt32();
-        pad->left = vec[1].AsInt32();
-        pad->zero_point = vec[2].AsInt32();
-      }
     } else if (key.compare("par") == 0) {
       if (plan) {
         const auto &plan_map = values[i].AsMap();
